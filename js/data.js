@@ -866,7 +866,8 @@ window.DATA = (function () {
     { id: 'words50', icon: '📚', name: 'Vocabulario', desc: 'Aprende 50 palabras' },
     { id: 'levelup', icon: '🚀', name: 'Subiste de nivel', desc: 'Completa un nivel completo' },
     { id: 'chat', icon: '💬', name: 'Conversador', desc: 'Completa una conversación' },
-    { id: 'review', icon: '🧠', name: 'Memoria de acero', desc: 'Repasa tus errores' }
+    { id: 'review', icon: '🧠', name: 'Memoria de acero', desc: 'Repasa tus errores' },
+    { id: 'social', icon: '🤝', name: 'En equipo', desc: 'Agrega a un amigo para comparar progreso' }
   ];
 
   const GOALS = [

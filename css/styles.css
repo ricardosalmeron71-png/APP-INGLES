@@ -406,3 +406,43 @@ html.dark .msg.hint .msg-bubble { background: #3d3214; color: #ffd76a; }
   #app { background: var(--bg); box-shadow: 0 0 40px rgba(0,0,0,.06); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- comunidad / ranking ---------- */
+.tabbar a { flex: 1; padding: 4px 2px; margin: 0 2px; }
+.tabbar a small { font-size: .65rem; }
+.rank-hero .row.gap .btn { flex: 1; }
+.seg { display: flex; background: var(--bg2); border-radius: 14px; padding: 4px; gap: 4px; margin: 12px 0; }
+.seg button { flex: 1; border: 0; background: none; font: inherit; font-weight: 800; font-size: .85rem; color: var(--muted); padding: 9px 4px; border-radius: 10px; cursor: pointer; }
+.seg button.on { background: var(--card); color: var(--blue); box-shadow: 0 2px 0 var(--border); }
+.rank-list { display: grid; gap: 8px; }
+.rank-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid var(--border); border-radius: 14px; text-decoration: none; color: var(--text); background: var(--card); }
+.rank-row.me { border-color: var(--blue); background: #ddf4ff; }
+html.dark .rank-row.me { background: #193b4d; }
+.rank-pos { width: 30px; text-align: center; font-size: 1.4rem; }
+.rank-n { font-weight: 900; color: var(--muted); font-size: 1rem; }
+.rank-av { font-size: 1.7rem; width: 44px; height: 44px; display: grid; place-items: center; background: var(--bg2); border-radius: 50%; flex-shrink: 0; }
+.rank-av.big { font-size: 2.6rem; width: 76px; height: 76px; }
+.rank-val { font-weight: 900; text-align: right; min-width: 52px; }
+.rank-val small { font-size: .65rem; color: var(--muted); margin-left: 2px; }
+.tag { background: var(--blue); color: #fff; font-size: .65rem; padding: 1px 6px; border-radius: 6px; vertical-align: middle; }
+.vs { display: flex; align-items: center; justify-content: space-around; margin: 10px 0; }
+.vs-p { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 40%; text-align: center; }
+.vs-x { font-size: 1.6rem; font-weight: 900; color: var(--orange); }
+.cmp-row, .cmp-skill { display: grid; grid-template-columns: 1fr 96px 1fr; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.cmp-row:last-child, .cmp-skill:last-child { border-bottom: 0; }
+.cmp-l { display: flex; flex-direction: column; align-items: center; text-align: center; font-size: 1.2rem; }
+.cmp-l small { font-size: .68rem; color: var(--muted); font-weight: 700; line-height: 1.2; }
+.cmp-v { text-align: center; font-weight: 800; padding: 6px; border-radius: 10px; }
+.cmp-v.win { background: var(--ok-bg); color: var(--green-d); }
+.win-t { color: var(--green-d); }
+.half { display: flex; align-items: center; gap: 6px; }
+.half.left { flex-direction: row; }
+.hbar { flex: 1; height: 10px; background: var(--border); border-radius: 10px; overflow: hidden; }
+.hbar > div { height: 100%; background: var(--orange); border-radius: 10px; }
+.hbar.me { transform: scaleX(-1); }
+.hbar.me > div { background: var(--blue); }
+.radar-area.other { fill: rgba(255,150,0,.25); stroke: var(--orange); }
+.legend { text-align: center; font-weight: 700; font-size: .85rem; margin-bottom: 8px; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin: 0 4px 0 10px; }
+.dot.me { background: var(--blue); } .dot.other { background: var(--orange); }
+.share-code { font-size: .8rem; min-height: 90px; }

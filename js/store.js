@@ -221,7 +221,66 @@ window.Store = (function () {
     tryU('levelup', ctx.levelUp);
     tryU('chat', ctx.chat);
     tryU('review', ctx.review);
+    tryU('social', Object.keys(u.friends || {}).length >= 1);
     return got;
+  }
+
+  /* ------------------ COMUNIDAD: comparar con otros usuarios ------------------ */
+  function weekXP(u) {
+    let s = 0;
+    for (let i = 0; i < 7; i++) { const d = new Date(); d.setDate(d.getDate() - i); s += u.progress.xpByDay[today(d)] || 0; }
+    return s;
+  }
+  /** Resumen público del progreso (sin correo ni contraseña) */
+  function summary(u) {
+    return {
+      v: 1, id: u.id, n: u.name, a: u.profile.avatar, c: u.cefr || 'A0', l: u.level,
+      x: u.progress.xp, w: weekXP(u), s: currentStreak(u), b: u.progress.streak.best,
+      ls: Object.keys(u.progress.lessons).length, wd: Object.keys(u.progress.words).length,
+      ac: Object.keys(u.progress.achievements).filter((k) => !k.startsWith('chat_')).length,
+      k: skillScores(u), lp: LEVELS.map((L) => levelProgress(u, L.id).pct), t: Date.now()
+    };
+  }
+  const b64e = (str) => btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64d = (str) => decodeURIComponent(escape(atob(str.replace(/-/g, '+').replace(/_/g, '/'))));
+  function encodeSummary(u) { return b64e(JSON.stringify(summary(u))); }
+
+  /** Decodifica y valida un código recibido (dato externo: se limpia todo) */
+  function decodeSummary(code) {
+    let o;
+    try { o = JSON.parse(b64d(String(code).trim())); } catch (e) { throw new Error('El código no es válido. Cópialo completo e inténtalo de nuevo.'); }
+    if (!o || o.v !== 1 || typeof o.id !== 'string') throw new Error('El código no es válido.');
+    const num = (x, max = 1e7) => Math.max(0, Math.min(max, Math.round(Number(x) || 0)));
+    const lvl = (x, def) => (LEVELS.some((L) => L.id === x) ? x : def);
+    const k = {};
+    Object.keys(window.DATA.SKILLS).forEach((key) => { k[key] = num(o.k && o.k[key], 100); });
+    return {
+      v: 1, id: o.id.slice(0, 40), n: String(o.n || 'Amigo').slice(0, 40), a: String(o.a || '🙂').slice(0, 8),
+      c: o.c === 'A0' ? 'A0' : lvl(o.c, 'A0'), l: lvl(o.l, 'A1'),
+      x: num(o.x), w: num(o.w), s: num(o.s, 10000), b: num(o.b, 10000), ls: num(o.ls, 10000), wd: num(o.wd, 100000), ac: num(o.ac, 100),
+      k, lp: LEVELS.map((_, i) => num(o.lp && o.lp[i], 100)), t: Math.min(Date.now(), num(o.t, 1e14))
+    };
+  }
+  function addFriend(u, code) {
+    const snap = decodeSummary(code);
+    if (snap.id === u.id) throw new Error('Ese es tu propio código 😄. Compártelo con tus amigos.');
+    u.friends = u.friends || {};
+    const isNew = !u.friends[snap.id];
+    u.friends[snap.id] = snap;
+    return { snap, isNew };
+  }
+  function removeFriend(u, id) { if (u.friends) delete u.friends[id]; }
+
+  /** Lista para el ranking: yo + usuarios de este teléfono (en vivo) + amigos (última copia compartida) */
+  function community(u) {
+    const list = [{ ...summary(u), me: true, src: 'me' }];
+    Object.values(db.users).forEach((o) => { if (o.id !== u.id && o.onboarded) list.push({ ...summary(o), src: 'local' }); });
+    Object.values(u.friends || {}).forEach((f) => {
+      if (list.some((x) => x.id === f.id)) return;
+      const stale = Date.now() - f.t > 7 * 86400000;
+      list.push({ ...f, w: stale ? 0 : f.w, src: 'friend' });
+    });
+    return list;
   }
 
   /* ------------------ PLAN DE APRENDIZAJE ------------------ */
@@ -272,6 +331,6 @@ window.Store = (function () {
     today, daysBetween, levelIndex, save, register, login, logout, user, allUsers, update, deleteAccount, exportData, importData,
     lessonId, unitsOf, isDone, unitDoneCount, unitMastered, isUnitUnlocked, isLessonUnlocked, levelProgress, nextLesson, checkLevelUp,
     addXP, currentStreak, recordSkill, skillScores, weakSkills, addMistake, clearMistake, learnWords, reviewWord, dueWords,
-    checkAchievements, buildPlan
+    checkAchievements, buildPlan, summary, encodeSummary, decodeSummary, addFriend, removeFriend, community, weekXP
   };
 })();

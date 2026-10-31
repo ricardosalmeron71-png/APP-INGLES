@@ -17,14 +17,15 @@ y funciona **sin conexión**. No necesita tiendas de aplicaciones ni servidor.
 | ✍️ **Análisis de escritura** | Detecta errores típicos (I minúscula, “people is”, “I have 20 years”, “he don’t”, “did went”, “more better”, a/an, preposiciones, falsos amigos…), ortografía, mayúsculas, puntuación, repeticiones, longitud, variedad de vocabulario, conectores y uso de las estructuras de la lección. |
 | 🔊 **Audio** | Todo el inglés se puede escuchar (normal y 🐢 lento), acento 🇺🇸 / 🇬🇧 / 🇦🇺 y velocidad ajustables. |
 | 💪 **Práctica** | Repaso de errores, tarjetas con **repetición espaciada** (Leitner), práctica por habilidad, laboratorio de voz, laboratorio de escritura, **conversaciones simuladas** (cafetería, hotel, entrevista, reclamación) y guía gramatical con buscador. |
+| 🏆 **Ranking y comparación** | Ranking por XP de la semana, XP total, nivel o racha. Incluye a los usuarios del mismo teléfono y a los amigos que compartan su progreso por enlace (WhatsApp, etc.). Pantalla “Tú vs. amigo” con niveles, estadísticas, radar de habilidades superpuesto y avance por nivel. |
 | 📊 **Progreso** | Nivel certificado y nivel en estudio, XP, racha 🔥 con protectores, gráfico de 7 días, calendario de actividad, radar de habilidades, avance por nivel, evolución de la escritura y 14 logros. |
 | ⚙️ **Perfil** | Cambiar objetivo/meta, repetir prueba de nivel, modo oscuro, sonidos, exportar/importar copia de seguridad, cerrar sesión y eliminar cuenta. |
 
 ## 📱 Cómo usarla en el teléfono
 
-1. **Publícala** (gratis) con GitHub Pages: en el repositorio ve a *Settings → Pages → Source: GitHub Actions*.
-   Al hacer merge a `main`, el flujo `.github/workflows/pages.yml` la publica en
-   `https://<tu-usuario>.github.io/<repositorio>/`.
+1. **Publícala** (gratis) con GitHub Pages: en el repositorio ve a *Settings → Pages → Branch*, elige la rama
+   con la app y la carpeta `/ (root)`, y toca *Save*. Queda en `https://<tu-usuario>.github.io/<repositorio>/`
+   y se actualiza sola con cada cambio que se suba a esa rama.
 2. Abre esa dirección en el teléfono:
    - **Android (Chrome):** toca “Instalar app” o menú ⋮ → *Agregar a pantalla principal*.
    - **iPhone (Safari):** toca *Compartir* → *Agregar a inicio*.
@@ -64,7 +65,7 @@ lectura y tema de escritura). Las 7 lecciones se generan automáticamente. Los d
 ## 🚀 Siguientes pasos sugeridos
 
 - **Sincronizar cuentas en la nube** (Firebase o Supabase) para usar la misma cuenta en varios dispositivos
-  y tener tablas de clasificación reales. Hoy los datos se guardan en el teléfono (con copia exportable).
+  y que el ranking de amigos se actualice en tiempo real (hoy se actualiza cuando cada amigo vuelve a compartir). Hoy los datos se guardan en el teléfono (con copia exportable).
 - **Corrección con IA** (por ejemplo, la API de Claude) a través de un pequeño backend para dar retroalimentación
   aún más detallada de textos libres y conversaciones abiertas.
 - **Recordatorios diarios** con notificaciones push.

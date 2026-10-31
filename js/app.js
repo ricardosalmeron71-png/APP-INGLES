@@ -51,7 +51,7 @@
   }
   const tabbar = (active) => `
     <nav class="tabbar">
-      ${[['learn', '🏠', 'Aprender'], ['practice', '💪', 'Práctica'], ['progress', '📊', 'Progreso'], ['profile', '👤', 'Perfil']]
+      ${[['learn', '🏠', 'Aprender'], ['practice', '💪', 'Práctica'], ['community', '🏆', 'Ranking'], ['progress', '📊', 'Progreso'], ['profile', '👤', 'Perfil']]
         .map(([id, ic, name]) => `<a href="#/${id}" class="${active === id ? 'active' : ''}"><span>${ic}</span><small>${name}</small></a>`).join('')}
     </nav>`;
   const topbar = (u) => {
@@ -70,12 +70,24 @@
 
   /* ------------------ ROUTER ------------------ */
   const routes = {};
+  const PENDING_FRIEND = 'eu_pending_friend';
   let leaveGuard = null;
   function render() {
     const hash = location.hash.replace(/^#/, '') || '/';
     const [, name, ...params] = hash.split('/');
     const u = St.user();
     applySettings(u);
+    // Enlace de amigo (#/add/CODIGO): se guarda y se procesa al tener sesión
+    if (name === 'add' && params[0]) {
+      localStorage.setItem(PENDING_FRIEND, params[0]);
+      if (!u) { toast('👋 Crea tu cuenta o inicia sesión para agregar a tu amigo'); return go('/welcome'); }
+    }
+    if (u && u.onboarded && localStorage.getItem(PENDING_FRIEND)) {
+      const code = localStorage.getItem(PENDING_FRIEND);
+      localStorage.removeItem(PENDING_FRIEND);
+      addFriendCode(code);
+      return go('/community');
+    }
     const publicRoutes = ['', 'welcome', 'login', 'register'];
     if (!u && !publicRoutes.includes(name || '')) return go('/welcome');
     if (u && publicRoutes.includes(name || '')) return go(u.onboarded ? '/learn' : '/onboarding');
@@ -409,7 +421,7 @@
           <a href="#/plan" class="quick-item">🗺️<small>Mi plan</small></a>
           <a href="#/flashcards" class="quick-item">🃏<small>Tarjetas${dueW ? ` <b class="badge">${dueW}</b>` : ''}</small></a>
           <a href="#/mistakes" class="quick-item">🧠<small>Errores${mist ? ` <b class="badge">${mist}</b>` : ''}</small></a>
-          <a href="#/chat" class="quick-item">💬<small>Conversar</small></a>
+          <a href="#/community" class="quick-item">🏆<small>Ranking</small></a>
         </div>
         ${LEVELS.map((L, li) => {
           const lp = St.levelProgress(u, L.id);
@@ -842,15 +854,16 @@
   };
 
   /* ------------------ PROGRESO ------------------ */
-  function radarChart(scores) {
+  function radarChart(scores, other) {
     const keys = Object.keys(SKILLS);
     const cx = 150, cy = 130, R = 95;
     const pt = (i, r) => { const a = -Math.PI / 2 + i * 2 * Math.PI / keys.length; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
     const rings = [0.25, 0.5, 0.75, 1].map((f) => `<polygon points="${keys.map((_, i) => pt(i, R * f).join(',')).join(' ')}" class="radar-ring"/>`).join('');
     const axes = keys.map((_, i) => `<line x1="${cx}" y1="${cy}" x2="${pt(i, R)[0]}" y2="${pt(i, R)[1]}" class="radar-axis"/>`).join('');
     const poly = keys.map((k, i) => pt(i, R * Math.max(0.05, (scores[k] || 0) / 100)).join(',')).join(' ');
-    const labels = keys.map((k, i) => { const [x, y] = pt(i, R + 24); return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" class="radar-label">${SKILLS[k].icon} ${scores[k] || 0}</text>`; }).join('');
-    return `<svg viewBox="0 0 300 260" class="radar" role="img" aria-label="Habilidades">${rings}${axes}<polygon points="${poly}" class="radar-area"/>${labels}</svg>`;
+    const poly2 = other ? keys.map((k, i) => pt(i, R * Math.max(0.05, (other[k] || 0) / 100)).join(',')).join(' ') : '';
+    const labels = keys.map((k, i) => { const [x, y] = pt(i, R + 24); return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" class="radar-label">${SKILLS[k].icon} ${other ? '' : scores[k] || 0}</text>`; }).join('');
+    return `<svg viewBox="0 0 300 260" class="radar" role="img" aria-label="Habilidades">${rings}${axes}${other ? `<polygon points="${poly2}" class="radar-area other"/>` : ''}<polygon points="${poly}" class="radar-area"/>${labels}</svg>`;
   }
 
   routes.progress = () => {
@@ -904,6 +917,163 @@
         ${p.writings.length ? `<div class="card"><h4>Evolución de tu escritura</h4><div class="bars small">${p.writings.slice(0, 10).reverse().map((w) => `<div class="bar-col"><div class="bar-v" style="height:${w.score}%;--c:#ce82ff"><small>${w.score}</small></div></div>`).join('')}</div></div>` : ''}
       </main>
       ${tabbar('progress')}`;
+  };
+
+
+  /* ------------------ COMUNIDAD: RANKING Y COMPARAR ------------------ */
+  const ago = (t) => {
+    const d = Math.floor((Date.now() - t) / 86400000);
+    return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`;
+  };
+  function addFriendCode(text) {
+    const str = String(text || '');
+    const fromLink = str.match(/#\/add\/([A-Za-z0-9_-]+)/);
+    const tokens = str.match(/[A-Za-z0-9_-]{40,}/g);
+    const code = fromLink ? fromLink[1] : tokens ? tokens[tokens.length - 1] : str.trim();
+    let res, got = [];
+    try {
+      St.update((u) => { res = St.addFriend(u, code); got = St.checkAchievements(u); });
+    } catch (e) { toast('❌ ' + esc(e.message), 3500); return false; }
+    toast(`${esc(res.snap.a)} <div><b>${esc(res.snap.n)}</b><div>${res.isNew ? 'agregado a tu ranking' : 'progreso actualizado'}</div></div>`);
+    announceAchievements(got);
+    return true;
+  }
+
+  function shareModal() {
+    const u = St.user();
+    const code = St.encodeSummary(u);
+    const url = `${location.origin}${location.pathname}#/add/${code}`;
+    const streak = St.currentStreak(u);
+    const text = `${u.profile.avatar} ${u.name} está aprendiendo inglés con EnglishUp: nivel ${u.cefr || 'A0'} (estudiando ${u.level}), ${u.progress.xp} XP y racha de ${streak} 🔥. ¡Agrégame para comparar nuestro progreso!\n\n${url}`;
+    modal(`
+      <div class="center-text"><div class="big-emoji">📤</div><h3>Compartir mi progreso</h3>
+      <p class="muted small">Envía este enlace a tus amigos. Al abrirlo (o pegarlo en <b>Ranking → Agregar amigo</b>) aparecerás en su ranking.</p></div>
+      <textarea class="answer-input share-code" readonly rows="4">${esc(text)}</textarea>
+      ${navigator.share ? '<button class="btn" id="native-share">📲 Compartir (WhatsApp, etc.)</button>' : ''}
+      <button class="btn secondary" id="copy">📋 Copiar</button>
+      <p class="small muted">🔒 Solo se comparte tu nombre, avatar, nivel y estadísticas. Nunca tu correo ni tu contraseña. Vuelve a compartir cuando avances para que vean tus datos actualizados.</p>
+      <button class="btn ghost" data-close>Cerrar</button>`, (m) => {
+      const ta = $('.share-code', m);
+      const ns = $('#native-share', m);
+      if (ns) ns.addEventListener('click', () => navigator.share({ title: 'EnglishUp', text }).catch(() => {}));
+      $('#copy', m).addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(text); toast('✅ Copiado. Pégalo en WhatsApp o donde quieras.'); }
+        catch (e) { ta.select(); document.execCommand('copy'); toast('✅ Copiado'); }
+      });
+    });
+  }
+
+  function addFriendModal() {
+    modal(`
+      <div class="center-text"><div class="big-emoji">🤝</div><h3>Agregar amigo</h3>
+      <p class="muted small">Pide a tu amigo que toque <b>Compartir mi progreso</b> en su app y te envíe el mensaje. Pégalo aquí completo:</p></div>
+      <textarea class="answer-input" id="code" rows="4" placeholder="Pega aquí el mensaje o el enlace de tu amigo..."></textarea>
+      <button class="btn" id="add">Agregar</button>
+      <button class="btn ghost" data-close>Cancelar</button>`, (m, close) => {
+      $('#add', m).addEventListener('click', () => { if (addFriendCode($('#code', m).value)) { close(); render(); } });
+    });
+  }
+
+  const RANK_SORTS = {
+    week: { name: 'Semana', unit: 'XP', val: (x) => x.w },
+    xp: { name: 'XP total', unit: 'XP', val: (x) => x.x },
+    level: { name: 'Nivel', unit: '', val: (x) => St.levelIndex(x.l) * 1000 + (x.lp[St.levelIndex(x.l)] || 0) + (x.c === x.l ? 100 : 0), show: (x) => `${x.c}` },
+    streak: { name: 'Racha', unit: '🔥', val: (x) => x.s }
+  };
+  let rankSort = 'week';
+
+  routes.community = () => {
+    const u = St.user();
+    const list = St.community(u);
+    const sorter = RANK_SORTS[rankSort];
+    list.sort((a, b) => sorter.val(b) - sorter.val(a) || b.x - a.x);
+    const medal = (i) => ['🥇', '🥈', '🥉'][i] || `<span class="rank-n">${i + 1}</span>`;
+    const myPos = list.findIndex((x) => x.me);
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <h2>🏆 Ranking</h2>
+        <div class="card hero-card rank-hero">
+          <div class="row between"><div><div class="muted small">Tu posición (${sorter.name.toLowerCase()})</div><b class="xl">#${myPos + 1}</b> <span class="muted">de ${list.length}</span></div>
+          <div class="big-emoji">${esc(u.profile.avatar)}</div></div>
+          <div class="row gap"><button class="btn small" id="share">📤 Compartir mi progreso</button><button class="btn small secondary" id="addf">➕ Agregar amigo</button></div>
+        </div>
+        <div class="seg">${Object.entries(RANK_SORTS).map(([k, r]) => `<button data-sort="${k}" class="${k === rankSort ? 'on' : ''}">${r.name}</button>`).join('')}</div>
+        <div class="rank-list">${list.map((x, i) => `
+          <${x.me ? 'div' : `a href="#/compare/${encodeURIComponent(x.id)}"`} class="rank-row ${x.me ? 'me' : ''}">
+            <div class="rank-pos">${medal(i)}</div>
+            <div class="rank-av">${esc(x.a)}</div>
+            <div class="grow"><b>${esc(x.n)}${x.me ? ' <span class="tag">Tú</span>' : ''}</b>
+              <div class="small muted">${x.src === 'local' ? '📱 En este teléfono' : x.src === 'friend' ? `🤝 Amigo · actualizado ${ago(x.t)}` : `🔥 ${x.s} · ${x.ls} lecciones`}</div></div>
+            <span class="level-badge sm" style="--c:${levelOf(x.l).color}">${x.c}</span>
+            <div class="rank-val">${sorter.show ? '' : `${sorter.val(x)}<small>${sorter.unit}</small>`}</div>
+            ${x.me ? '' : '<span class="muted">›</span>'}
+          </${x.me ? 'div' : 'a'}>`).join('')}</div>
+        ${list.length === 1 ? `<div class="card center-text"><div class="big-emoji">👥</div><p><b>¡Invita a tus amigos!</b></p><p class="muted small">Comparte tu progreso por WhatsApp. Cuando ellos te envíen el suyo, aparecerán aquí y podrán compararse. Los usuarios registrados en este mismo teléfono aparecen automáticamente.</p></div>` : ''}
+        <p class="small muted center-text">Toca a una persona para comparar niveles y habilidades. Los datos de tus amigos son los de la última vez que compartieron su progreso.</p>
+      </main>
+      ${tabbar('community')}`;
+    $('#share').addEventListener('click', shareModal);
+    $('#addf').addEventListener('click', addFriendModal);
+    $$('[data-sort]').forEach((b) => b.addEventListener('click', () => { rankSort = b.dataset.sort; render(); }));
+  };
+
+  routes.compare = (rawId) => {
+    const u = St.user();
+    const id = decodeURIComponent(rawId || '');
+    const list = St.community(u);
+    const me = list.find((x) => x.me), o = list.find((x) => x.id === id && !x.me);
+    if (!o) return go('/community');
+    const rows = [
+      ['🎓', 'Nivel certificado', (x) => (x.c === 'A0' ? -1 : St.levelIndex(x.c)), (x) => x.c],
+      ['📘', 'Nivel en estudio', (x) => St.levelIndex(x.l) * 1000 + (x.lp[St.levelIndex(x.l)] || 0), (x) => `${x.l} · ${x.lp[St.levelIndex(x.l)] || 0}%`],
+      ['💎', 'XP total', (x) => x.x],
+      ['📅', 'XP últimos 7 días', (x) => x.w],
+      ['🔥', 'Racha actual', (x) => x.s],
+      ['🏅', 'Mejor racha', (x) => x.b],
+      ['✅', 'Lecciones', (x) => x.ls],
+      ['📚', 'Palabras', (x) => x.wd],
+      ['🏆', 'Logros', (x) => x.ac]
+    ];
+    let myWins = 0, hisWins = 0;
+    const rowHtml = ([ic, label, val, show]) => {
+      const a = val(me), b = val(o);
+      if (a > b) myWins++; else if (b > a) hisWins++;
+      const f = show || val;
+      return `<div class="cmp-row"><div class="cmp-v ${a > b ? 'win' : ''}">${esc(f(me))}</div><div class="cmp-l">${ic}<small>${label}</small></div><div class="cmp-v ${b > a ? 'win' : ''}">${esc(f(o))}</div></div>`;
+    };
+    const skillRows = Object.entries(SKILLS).map(([k, sk]) => {
+      const a = me.k[k] || 0, b = o.k[k] || 0;
+      return `<div class="cmp-skill"><div class="half left"><b class="${a > b ? 'win-t' : ''}">${a}</b><div class="hbar me"><div style="width:${a}%"></div></div></div>
+        <div class="cmp-l">${sk.icon}<small>${sk.name}</small></div>
+        <div class="half"><div class="hbar"><div style="width:${b}%"></div></div><b class="${b > a ? 'win-t' : ''}">${b}</b></div></div>`;
+    }).join('');
+    const statsHtml = rows.map(rowHtml).join('');
+    const verdict = myWins > hisWins ? `¡Vas ganando ${myWins} a ${hisWins}! 💪` : hisWins > myWins ? `${esc(o.n)} va ganando ${hisWins} a ${myWins}. ¡Tú puedes alcanzarle! 🚀` : `¡Empate ${myWins} a ${hisWins}! 🤝`;
+    const gap = o.x - me.x;
+    app.innerHTML = `
+      <div class="screen page">
+        <div class="page-head"><a href="#/community" class="back">←</a><h2>Comparar</h2></div>
+        <div class="vs">
+          <div class="vs-p"><div class="rank-av big">${esc(me.a)}</div><b>Tú</b><span class="level-badge" style="--c:${levelOf(me.l).color}">${me.c}</span></div>
+          <div class="vs-x">VS</div>
+          <div class="vs-p"><div class="rank-av big">${esc(o.a)}</div><b>${esc(o.n)}</b><span class="level-badge" style="--c:${levelOf(o.l).color}">${o.c}</span></div>
+        </div>
+        <div class="card center-text"><b>${verdict}</b>${gap > 0 ? `<div class="small muted">Te faltan ${gap} XP para alcanzar a ${esc(o.n)} (≈ ${Math.ceil(gap / 15)} lecciones).</div>` : ''}</div>
+        <div class="card">${statsHtml}</div>
+        <div class="card"><h4>Habilidades</h4>
+          ${radarChart(me.k, o.k)}
+          <div class="legend"><span class="dot me"></span> Tú <span class="dot other"></span> ${esc(o.n)}</div>
+          ${skillRows}</div>
+        <div class="card"><h4>Avance por nivel</h4>${LEVELS.map((L, i) => `
+          <div class="cmp-skill"><div class="half left"><b>${me.lp[i]}%</b><div class="hbar me"><div style="width:${me.lp[i]}%"></div></div></div>
+          <div class="cmp-l"><span class="level-badge sm" style="--c:${L.color}">${L.id}</span></div>
+          <div class="half"><div class="hbar"><div style="width:${o.lp[i]}%"></div></div><b>${o.lp[i]}%</b></div></div>`).join('')}</div>
+        <p class="small muted center-text">${o.src === 'friend' ? `Datos de ${esc(o.n)} actualizados ${ago(o.t)}.` : 'Usuario de este teléfono · datos en vivo.'}</p>
+        ${o.src === 'friend' ? '<button class="btn ghost" id="rm">🗑️ Quitar de mi ranking</button>' : ''}
+      </div>`;
+    const rm = $('#rm');
+    if (rm) rm.addEventListener('click', () => { if (confirm(`¿Quitar a ${o.n} de tu ranking?`)) { St.update((x) => St.removeFriend(x, o.id)); go('/community'); } });
   };
 
   /* ------------------ PERFIL Y AJUSTES ------------------ */
