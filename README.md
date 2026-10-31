@@ -1,0 +1,72 @@
+# 🦉 EnglishUp — App para aprender y practicar inglés
+
+Aplicación móvil (PWA) para aprender inglés al estilo de las apps de idiomas más populares.
+Funciona en **Android y iPhone** desde el navegador, se **instala como una app** en la pantalla de inicio
+y funciona **sin conexión**. No necesita tiendas de aplicaciones ni servidor.
+
+## ✨ Funciones
+
+| Área | Qué incluye |
+|---|---|
+| 👤 **Registro** | Cuenta con nombre, correo y contraseña (cifrada con SHA‑256 + sal), varios usuarios por dispositivo, avatar. |
+| 🎯 **Diagnóstico inicial** | Objetivo (viajar, trabajo, examen…), autoevaluación, meta diaria y **prueba de nivel adaptativa** A1→C1 que evalúa gramática, vocabulario, comprensión auditiva, lectura, **pronunciación** y **escritura**. |
+| 🗺️ **Plan personalizado** | Meta diaria de XP, semana tipo enfocada en tus habilidades débiles, fecha estimada para llegar a tu nivel objetivo y recomendaciones. |
+| 🛤️ **Camino de aprendizaje** | 5 niveles (A1, A2, B1, B2, C1) → 20 unidades → **140 lecciones**. Cada unidad tiene 7 tipos de lección: 📚 Vocabulario, 🧩 Gramática, 🎧 Escucha, 🎤 Habla, ✍️ Escritura, 📖 Lectura y 🏆 Repaso. Se desbloquean en orden y **se pueden repetir** cuando quieras. |
+| 🧠 **Ejercicios** | Tarjetas con imagen, elegir imagen, opción múltiple, unir parejas, completar huecos, ordenar palabras, traducir escribiendo, dictado, escuchar y elegir, pronunciar, leer y responder, escritura libre. Los errores se repiten al final de la lección. |
+| 🎤 **Análisis de voz** | Reconocimiento de voz del teléfono → puntuación 0‑100, palabras bien/mal pronunciadas resaltadas y consejos específicos para hispanohablantes (TH, V/B, “es‑”, ‑ED…). Si el navegador no lo permite, te grabas y te comparas con el modelo. |
+| ✍️ **Análisis de escritura** | Detecta errores típicos (I minúscula, “people is”, “I have 20 years”, “he don’t”, “did went”, “more better”, a/an, preposiciones, falsos amigos…), ortografía, mayúsculas, puntuación, repeticiones, longitud, variedad de vocabulario, conectores y uso de las estructuras de la lección. |
+| 🔊 **Audio** | Todo el inglés se puede escuchar (normal y 🐢 lento), acento 🇺🇸 / 🇬🇧 / 🇦🇺 y velocidad ajustables. |
+| 💪 **Práctica** | Repaso de errores, tarjetas con **repetición espaciada** (Leitner), práctica por habilidad, laboratorio de voz, laboratorio de escritura, **conversaciones simuladas** (cafetería, hotel, entrevista, reclamación) y guía gramatical con buscador. |
+| 📊 **Progreso** | Nivel certificado y nivel en estudio, XP, racha 🔥 con protectores, gráfico de 7 días, calendario de actividad, radar de habilidades, avance por nivel, evolución de la escritura y 14 logros. |
+| ⚙️ **Perfil** | Cambiar objetivo/meta, repetir prueba de nivel, modo oscuro, sonidos, exportar/importar copia de seguridad, cerrar sesión y eliminar cuenta. |
+
+## 📱 Cómo usarla en el teléfono
+
+1. **Publícala** (gratis) con GitHub Pages: en el repositorio ve a *Settings → Pages → Source: GitHub Actions*.
+   Al hacer merge a `main`, el flujo `.github/workflows/pages.yml` la publica en
+   `https://<tu-usuario>.github.io/<repositorio>/`.
+2. Abre esa dirección en el teléfono:
+   - **Android (Chrome):** toca “Instalar app” o menú ⋮ → *Agregar a pantalla principal*.
+   - **iPhone (Safari):** toca *Compartir* → *Agregar a inicio*.
+3. ¡Listo! Se abre a pantalla completa como cualquier app y funciona sin internet
+   (el reconocimiento de voz de Android puede requerir conexión).
+
+> 🎤 Para el análisis de voz automático usa **Chrome** en Android o **Safari** en iPhone y permite el acceso al micrófono.
+
+### Probar en la computadora
+```bash
+python3 -m http.server 8080
+```
+Luego abre `http://localhost:8080` (usa la vista móvil de las herramientas de desarrollador).
+
+## 🗂️ Estructura
+
+```
+index.html              Entrada de la app
+manifest.webmanifest    Configuración para instalarla (PWA)
+sw.js                   Service worker (modo sin conexión)
+css/styles.css          Diseño móvil, modo oscuro
+js/data.js              CONTENIDO: niveles, unidades, prueba de nivel, diálogos, logros
+js/lessons.js           Genera los ejercicios de cada lección desde el contenido
+js/exercises.js         Componentes de ejercicios y motor de lecciones
+js/analysis.js          Corrección de respuestas, análisis de escritura y de pronunciación
+js/speech.js            Voz: escuchar (síntesis), hablar (reconocimiento), grabar, sonidos
+js/store.js             Usuarios, progreso, racha, repetición espaciada, plan de estudio
+js/app.js               Pantallas y navegación
+```
+
+## ➕ Agregar contenido
+
+Añade una unidad en `js/data.js` dentro de `UNITS` (vocabulario, frases, preguntas de gramática,
+lectura y tema de escritura). Las 7 lecciones se generan automáticamente. Los diálogos se agregan en
+`DIALOGUES` y las preguntas de la prueba de nivel en `PLACEMENT`.
+
+## 🚀 Siguientes pasos sugeridos
+
+- **Sincronizar cuentas en la nube** (Firebase o Supabase) para usar la misma cuenta en varios dispositivos
+  y tener tablas de clasificación reales. Hoy los datos se guardan en el teléfono (con copia exportable).
+- **Corrección con IA** (por ejemplo, la API de Claude) a través de un pequeño backend para dar retroalimentación
+  aún más detallada de textos libres y conversaciones abiertas.
+- **Recordatorios diarios** con notificaciones push.
+- **Publicar en Play Store / App Store** envolviendo la PWA con Capacitor.
+- Más unidades, audios grabados por nativos e imágenes ilustradas.
