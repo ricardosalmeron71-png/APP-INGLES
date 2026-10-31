@@ -144,7 +144,7 @@ window.Cloud = (function () {
   /* ------------------ TUTOR IA ------------------ */
   async function tutor(u, payload) {
     const t = await token(u);
-    try { return await request('/functions/v1/tutor', { method: 'POST', token: t, body: payload }); }
+    try { return await request(`/functions/v1/${encodeURIComponent(cfg.tutorFunction || 'tutor')}`, { method: 'POST', token: t, body: payload }); }
     catch (e) {
       if ((e.status === 0 && navigator.onLine) || e.status === 404) throw new CloudError('El tutor todavía no está activado en el servidor (falta crear la función "tutor" en Supabase).', e.status);
       throw e;
