@@ -17,7 +17,8 @@ window.Cloud = (function () {
     try {
       res = await fetch(URL_ + path, {
         method,
-        headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${token || KEY}`, ...headers },
+        // Las claves nuevas de Supabase (sb_publishable_...) no van en Authorization: solo el token del usuario.
+        headers: { apikey: KEY, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
         body: body === undefined ? undefined : JSON.stringify(body)
       });
     } catch (e) { throw new CloudError('Sin conexión a internet.', 0); }
