@@ -61,7 +61,34 @@ window.Store = (function () {
   function logout() { db.current = null; save(); }
   const user = () => (db.current ? db.users[db.current] : null);
   const allUsers = () => Object.values(db.users);
-  function update(fn) { const u = user(); if (u) { fn(u); save(); } return u; }
+  let onChange = null;
+  function setOnChange(fn) { onChange = fn; }
+  function update(fn) {
+    const u = user();
+    if (u) { fn(u); u.updatedAt = Date.now(); save(); if (onChange) onChange(u); }
+    return u;
+  }
+  function markSynced() { const u = user(); if (u) { u.syncedAt = Date.now(); save(); } }
+
+  /* Cuentas en la nube */
+  function attachCloud(session) { const u = user(); if (u) { u.cloud = session; save(); } }
+  /** Crea en este teléfono una cuenta a partir de los datos guardados en la nube */
+  async function adoptCloudUser(data, password, session) {
+    if (!data || !data.id || !data.progress) throw new Error('No se encontraron datos en la nube.');
+    const existing = Object.values(db.users).find((x) => x.email === data.email);
+    const id = existing ? existing.id : data.id;
+    const salt = Math.random().toString(36).slice(2);
+    db.users[id] = { ...data, id, salt, pass: await hash(salt + password), cloud: session };
+    db.current = id; save();
+    return db.users[id];
+  }
+  /** Reemplaza el progreso local por el de la nube (si la nube es más reciente) */
+  function replaceFromCloud(data) {
+    const u = user(); if (!u || !data) return;
+    const keep = { id: u.id, pass: u.pass, salt: u.salt, cloud: u.cloud, email: u.email };
+    db.users[u.id] = { ...data, ...keep, syncedAt: Date.now() };
+    save();
+  }
   function deleteAccount() { const u = user(); if (u) { delete db.users[u.id]; db.current = null; save(); } }
   function exportData() { return JSON.stringify(user(), null, 2); }
   function importData(json) {
@@ -221,7 +248,7 @@ window.Store = (function () {
     tryU('levelup', ctx.levelUp);
     tryU('chat', ctx.chat);
     tryU('review', ctx.review);
-    tryU('social', Object.keys(u.friends || {}).length >= 1);
+    tryU('social', Object.keys(u.friends || {}).length >= 1 || (u.cloudFriends || 0) > 0);
     return got;
   }
 
@@ -238,7 +265,17 @@ window.Store = (function () {
       x: u.progress.xp, w: weekXP(u), s: currentStreak(u), b: u.progress.streak.best,
       ls: Object.keys(u.progress.lessons).length, wd: Object.keys(u.progress.words).length,
       ac: Object.keys(u.progress.achievements).filter((k) => !k.startsWith('chat_')).length,
-      k: skillScores(u), lp: LEVELS.map((L) => levelProgress(u, L.id).pct), t: Date.now()
+      k: skillScores(u), lp: LEVELS.map((L) => levelProgress(u, L.id).pct), t: Date.now(),
+      // detalles para el perfil completo
+      g: u.profile.goal, m: u.profile.minutes, j: u.createdAt,
+      d7: Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return u.progress.xpByDay[today(d)] || 0; }),
+      mt: Math.round(Object.values(u.progress.minutesByDay).reduce((a, b) => a + b, 0)),
+      acc: (() => { const t = Object.values(u.progress.skills).reduce((a, x) => [a[0] + x.c, a[1] + x.t], [0, 0]); return t[1] ? Math.round(100 * t[0] / t[1]) : 0; })(),
+      um: UNITS.filter((un) => unitMastered(u, un)).length,
+      ach: Object.keys(u.progress.achievements).filter((k) => !k.startsWith('chat_')).slice(0, 30),
+      wr: (u.progress.writings || []).slice(0, 8).map((w) => w.score).reverse(),
+      sp: u.progress.speakCount || 0, wc: u.progress.writeCount || 0,
+      tc: (u.progress.tutorSessions || []).length
     };
   }
   const b64e = (str) => btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -249,6 +286,10 @@ window.Store = (function () {
   function decodeSummary(code) {
     let o;
     try { o = JSON.parse(b64d(String(code).trim())); } catch (e) { throw new Error('El código no es válido. Cópialo completo e inténtalo de nuevo.'); }
+    return sanitizeSummary(o);
+  }
+  /** Limpia un resumen que viene de fuera (código compartido o nube) */
+  function sanitizeSummary(o) {
     if (!o || o.v !== 1 || typeof o.id !== 'string') throw new Error('El código no es válido.');
     const num = (x, max = 1e7) => Math.max(0, Math.min(max, Math.round(Number(x) || 0)));
     const lvl = (x, def) => (LEVELS.some((L) => L.id === x) ? x : def);
@@ -258,7 +299,13 @@ window.Store = (function () {
       v: 1, id: o.id.slice(0, 40), n: String(o.n || 'Amigo').slice(0, 40), a: String(o.a || '🙂').slice(0, 8),
       c: o.c === 'A0' ? 'A0' : lvl(o.c, 'A0'), l: lvl(o.l, 'A1'),
       x: num(o.x), w: num(o.w), s: num(o.s, 10000), b: num(o.b, 10000), ls: num(o.ls, 10000), wd: num(o.wd, 100000), ac: num(o.ac, 100),
-      k, lp: LEVELS.map((_, i) => num(o.lp && o.lp[i], 100)), t: Math.min(Date.now(), num(o.t, 1e14))
+      k, lp: LEVELS.map((_, i) => num(o.lp && o.lp[i], 100)), t: Math.min(Date.now(), num(o.t, 1e14)),
+      g: window.DATA.GOALS.some((x) => x.id === o.g) ? o.g : null, m: num(o.m, 300), j: num(o.j, 1e14) || null,
+      d7: Array.from({ length: 7 }, (_, i) => num(Array.isArray(o.d7) ? o.d7[i] : 0, 100000)),
+      mt: num(o.mt, 1e6), acc: num(o.acc, 100), um: num(o.um, 1000),
+      ach: Array.isArray(o.ach) ? o.ach.filter((a) => window.DATA.ACHIEVEMENTS.some((x) => x.id === a)).slice(0, 30) : [],
+      wr: Array.isArray(o.wr) ? o.wr.slice(0, 8).map((x) => num(x, 100)) : [],
+      sp: num(o.sp, 1e6), wc: num(o.wc, 1e6), tc: num(o.tc, 1e6)
     };
   }
   function addFriend(u, code) {
@@ -331,6 +378,6 @@ window.Store = (function () {
     today, daysBetween, levelIndex, save, register, login, logout, user, allUsers, update, deleteAccount, exportData, importData,
     lessonId, unitsOf, isDone, unitDoneCount, unitMastered, isUnitUnlocked, isLessonUnlocked, levelProgress, nextLesson, checkLevelUp,
     addXP, currentStreak, recordSkill, skillScores, weakSkills, addMistake, clearMistake, learnWords, reviewWord, dueWords,
-    checkAchievements, buildPlan, summary, encodeSummary, decodeSummary, addFriend, removeFriend, community, weekXP
+    checkAchievements, buildPlan, summary, encodeSummary, decodeSummary, sanitizeSummary, setOnChange, markSynced, attachCloud, adoptCloudUser, replaceFromCloud, addFriend, removeFriend, community, weekXP
   };
 })();

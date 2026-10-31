@@ -143,11 +143,27 @@
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
       try {
-        await St.register(d);
+        if (Cloud.enabled()) {
+          // ¿Ya tiene cuenta en la nube con este correo? Entonces descargamos su progreso.
+          let session = null;
+          try { session = await Cloud.signUp(d.email.trim().toLowerCase(), d.password, d.name.trim()); }
+          catch (ce) {
+            if (/ya tiene una cuenta/.test(ce.message)) {
+              try { await cloudLogin(d.email.trim().toLowerCase(), d.password); return; }
+              catch (le) { throw new Error('Ese correo ya tiene cuenta. Inicia sesión con tu contraseña.'); }
+            }
+            if (ce.status !== 0) toast('☁️ ' + esc(ce.message), 3500);
+          }
+          await St.register(d);
+          if (session) St.attachCloud(session);
+          else if (navigator.onLine) toast('📧 Si te llega un correo de confirmación, ábrelo y luego conecta la nube en tu Perfil.', 4500);
+        } else await St.register(d);
         St.update((u) => { u.profile.age = d.age; });
         go('/onboarding');
-      } catch (err) { $('#err').textContent = err.message; }
+      } catch (err) { $('#err').textContent = err.message; btn.disabled = false; }
     });
   };
 
@@ -169,10 +185,47 @@
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
-      try { await St.login(d.email, d.password); go('/learn'); } catch (err) { $('#err').textContent = err.message; }
+      const email = d.email.trim().toLowerCase();
+      const btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        try { await St.login(email, d.password); }
+        catch (localErr) {
+          if (!Cloud.enabled()) throw localErr;
+          await cloudLogin(email, d.password); // cuenta creada en otro teléfono
+          return;
+        }
+        if (Cloud.enabled() && !Cloud.connected(St.user())) {
+          Cloud.signIn(email, d.password).then((sess) => { St.attachCloud(sess); syncOnStart(); }).catch(() => {});
+        }
+        go('/learn');
+      } catch (err) { $('#err').textContent = err.message; btn.disabled = false; }
     });
     $('#imp').addEventListener('change', (e) => importFile(e.target.files[0]));
   };
+  /** Entra con la cuenta de la nube y descarga el progreso a este teléfono */
+  async function cloudLogin(email, password) {
+    const session = await Cloud.signIn(email, password);
+    const row = await Cloud.pull({ cloud: session });
+    if (row && row.data && row.data.progress) await St.adoptCloudUser(row.data, password, session);
+    else { await St.register({ name: email.split('@')[0], email, password }); St.attachCloud(session); }
+    toast('☁️ ¡Listo! Tu progreso se descargó de la nube.');
+    go('/learn');
+  }
+  /** Al abrir la app: trae lo más nuevo de la nube o sube lo local */
+  async function syncOnStart() {
+    const u = St.user();
+    if (!Cloud.connected(u)) return;
+    try {
+      const row = await Cloud.pull(u);
+      if (row && row.data && row.data.progress && (row.data.updatedAt || 0) > (u.updatedAt || 0) + 2000) {
+        St.replaceFromCloud(row.data);
+        const name = (location.hash.split('/')[1] || '');
+        if (!['lesson', 'placement', 'tutor', 'drill', 'mistakes', 'flashcards'].includes(name)) render();
+        toast('☁️ Progreso actualizado desde la nube');
+      } else await Cloud.push(St.user());
+    } catch (e) { /* sin conexión: se sincroniza después */ }
+  }
   function importFile(file) {
     if (!file) return;
     const r = new FileReader();
@@ -575,7 +628,8 @@
           <a class="practice-card" href="#/flashcards" style="--c:#1cb0f6"><span>🃏</span><b>Tarjetas</b><small>${dueW} para hoy · ${Object.keys(u.progress.words).length} palabras</small></a>
           <a class="practice-card" href="#/voicelab" style="--c:#ff9600"><span>🎤</span><b>Laboratorio de voz</b><small>Pronunciación con análisis</small></a>
           <a class="practice-card" href="#/writelab" style="--c:#ce82ff"><span>✍️</span><b>Laboratorio de escritura</b><small>Corrección detallada</small></a>
-          <a class="practice-card" href="#/chat" style="--c:#58cc02"><span>💬</span><b>Conversaciones</b><small>Simula situaciones reales</small></a>
+          <a class="practice-card" href="#/tutor" style="--c:#58cc02"><span>🤖</span><b>Tutor con IA</b><small>Conversación real por voz con correcciones</small></a>
+          <a class="practice-card" href="#/chat" style="--c:#2bb673"><span>💬</span><b>Diálogos guiados</b><small>Situaciones con opciones · sin internet</small></a>
           <a class="practice-card" href="#/grammar" style="--c:#2b70c9"><span>📘</span><b>Guía gramatical</b><small>Todas las reglas</small></a>
         </div>
         <h3>Práctica por habilidad</h3>
@@ -920,38 +974,77 @@
   };
 
 
-  /* ------------------ COMUNIDAD: RANKING Y COMPARAR ------------------ */
+  /* ------------------ COMUNIDAD: RANKING, PERFIL DE AMIGOS Y COMPARAR ------------------ */
   const ago = (t) => {
     const d = Math.floor((Date.now() - t) / 86400000);
     return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`;
   };
-  function addFriendCode(text) {
+  const cloudCache = new Map(); // id → persona de la nube (última consulta)
+
+  /** Convierte un perfil de la nube al mismo formato que los resúmenes locales */
+  function fromCloudRow(row, u) {
+    const base = row.summary && row.summary.v === 1 ? row.summary : {};
+    let s;
+    try {
+      s = St.sanitizeSummary({ ...base, v: 1, id: row.id, n: row.name || base.n, a: row.avatar || base.a, x: row.xp, w: row.week_xp, s: row.streak, l: row.level, c: row.cefr, t: Date.parse(row.updated_at) || Date.now() });
+    } catch (e) { return null; }
+    if (Date.now() - s.t > 7 * 86400000) s.w = 0;
+    s.src = 'cloud'; s.lid = typeof base.id === 'string' ? base.id : null; s.code = row.friend_code;
+    if (Cloud.connected(u) && row.id === u.cloud.uid) s.me = true;
+    cloudCache.set(s.id, s);
+    return s;
+  }
+  function findPerson(id) {
+    const u = St.user();
+    return St.community(u).find((x) => x.id === id && !x.me) || cloudCache.get(id) || null;
+  }
+  const extractCloudCode = (str) => {
+    const m = str.match(/c[oó]digo[^:\n]*:\s*([A-Z0-9]{6})\b/i) || str.trim().match(/^([A-Za-z0-9]{6})$/);
+    return m ? m[1].toUpperCase() : null;
+  };
+
+  async function addFriendCode(text) {
+    const u = St.user();
     const str = String(text || '');
+    const cloudCode = Cloud.connected(u) ? extractCloudCode(str) : null;
+    let got = [];
+    if (cloudCode) {
+      try {
+        const row = await Cloud.addFriend(u, cloudCode);
+        St.update((x) => { x.cloudFriends = (x.cloudFriends || 0) + 1; got = St.checkAchievements(x); });
+        toast(`${esc(row.avatar || '🙂')} <div><b>${esc(row.name)}</b><div>agregado · verás su progreso en vivo</div></div>`);
+        announceAchievements(got);
+        return true;
+      } catch (e) { toast('❌ ' + esc(e.message), 3500); return false; }
+    }
     const fromLink = str.match(/#\/add\/([A-Za-z0-9_-]+)/);
     const tokens = str.match(/[A-Za-z0-9_-]{40,}/g);
     const code = fromLink ? fromLink[1] : tokens ? tokens[tokens.length - 1] : str.trim();
-    let res, got = [];
+    let res;
     try {
-      St.update((u) => { res = St.addFriend(u, code); got = St.checkAchievements(u); });
+      St.update((x) => { res = St.addFriend(x, code); got = St.checkAchievements(x); });
     } catch (e) { toast('❌ ' + esc(e.message), 3500); return false; }
     toast(`${esc(res.snap.a)} <div><b>${esc(res.snap.n)}</b><div>${res.isNew ? 'agregado a tu ranking' : 'progreso actualizado'}</div></div>`);
     announceAchievements(got);
     return true;
   }
 
-  function shareModal() {
+  async function shareModal() {
     const u = St.user();
+    let cloudCode = null;
+    if (Cloud.connected(u)) { try { cloudCode = (await Cloud.myProfile(u)).friend_code; } catch (e) { /* sin conexión */ } }
     const code = St.encodeSummary(u);
     const url = `${location.origin}${location.pathname}#/add/${code}`;
     const streak = St.currentStreak(u);
-    const text = `${u.profile.avatar} ${u.name} está aprendiendo inglés con EnglishUp: nivel ${u.cefr || 'A0'} (estudiando ${u.level}), ${u.progress.xp} XP y racha de ${streak} 🔥. ¡Agrégame para comparar nuestro progreso!\n\n${url}`;
+    const text = `${u.profile.avatar} ${u.name} está aprendiendo inglés con EnglishUp: nivel ${u.cefr || 'A0'} (estudiando ${u.level}), ${u.progress.xp} XP y racha de ${streak} 🔥. ¡Agrégame para comparar nuestro progreso!${cloudCode ? `\n\nMi código de amigo: ${cloudCode}` : ''}\n\n${url}`;
     modal(`
       <div class="center-text"><div class="big-emoji">📤</div><h3>Compartir mi progreso</h3>
-      <p class="muted small">Envía este enlace a tus amigos. Al abrirlo (o pegarlo en <b>Ranking → Agregar amigo</b>) aparecerás en su ranking.</p></div>
+      ${cloudCode ? `<div class="friend-code">${cloudCode}</div><p class="muted small">Tu <b>código de amigo</b>: con él te verán <b>en vivo</b> (si también usan la nube).</p>` : ''}
+      <p class="muted small">Envía este mensaje a tus amigos. Al abrir el enlace (o pegarlo en <b>Ranking → Agregar amigo</b>) aparecerás en su ranking.</p></div>
       <textarea class="answer-input share-code" readonly rows="4">${esc(text)}</textarea>
       ${navigator.share ? '<button class="btn" id="native-share">📲 Compartir (WhatsApp, etc.)</button>' : ''}
       <button class="btn secondary" id="copy">📋 Copiar</button>
-      <p class="small muted">🔒 Solo se comparte tu nombre, avatar, nivel y estadísticas. Nunca tu correo ni tu contraseña. Vuelve a compartir cuando avances para que vean tus datos actualizados.</p>
+      <p class="small muted">🔒 Solo se comparte tu nombre, avatar, nivel y estadísticas. Nunca tu correo ni tu contraseña.</p>
       <button class="btn ghost" data-close>Cerrar</button>`, (m) => {
       const ta = $('.share-code', m);
       const ns = $('#native-share', m);
@@ -964,66 +1057,163 @@
   }
 
   function addFriendModal() {
+    const cloud = Cloud.connected(St.user());
     modal(`
       <div class="center-text"><div class="big-emoji">🤝</div><h3>Agregar amigo</h3>
-      <p class="muted small">Pide a tu amigo que toque <b>Compartir mi progreso</b> en su app y te envíe el mensaje. Pégalo aquí completo:</p></div>
-      <textarea class="answer-input" id="code" rows="4" placeholder="Pega aquí el mensaje o el enlace de tu amigo..."></textarea>
+      <p class="muted small">${cloud ? 'Escribe el <b>código de amigo</b> de 6 letras, o pega' : 'Pide a tu amigo que toque <b>Compartir mi progreso</b> y pega aquí'} el mensaje completo que te envió:</p></div>
+      <textarea class="answer-input" id="code" rows="4" placeholder="${cloud ? 'Ej: K7Q2XA, o pega el mensaje...' : 'Pega aquí el mensaje o el enlace de tu amigo...'}"></textarea>
       <button class="btn" id="add">Agregar</button>
       <button class="btn ghost" data-close>Cancelar</button>`, (m, close) => {
-      $('#add', m).addEventListener('click', () => { if (addFriendCode($('#code', m).value)) { close(); render(); } });
+      $('#add', m).addEventListener('click', async () => { if (await addFriendCode($('#code', m).value)) { close(); render(); } });
     });
   }
 
   const RANK_SORTS = {
     week: { name: 'Semana', unit: 'XP', val: (x) => x.w },
     xp: { name: 'XP total', unit: 'XP', val: (x) => x.x },
-    level: { name: 'Nivel', unit: '', val: (x) => St.levelIndex(x.l) * 1000 + (x.lp[St.levelIndex(x.l)] || 0) + (x.c === x.l ? 100 : 0), show: (x) => `${x.c}` },
+    level: { name: 'Nivel', unit: '', val: (x) => St.levelIndex(x.l) * 1000 + (x.lp[St.levelIndex(x.l)] || 0) + (x.c === x.l ? 100 : 0), show: true },
     streak: { name: 'Racha', unit: '🔥', val: (x) => x.s }
   };
-  let rankSort = 'week';
+  let rankSort = 'week', rankScope = 'friends', rankReq = 0;
 
   routes.community = () => {
     const u = St.user();
-    const list = St.community(u);
+    const cloud = Cloud.connected(u);
+    if (!cloud && rankScope === 'global') rankScope = 'friends';
     const sorter = RANK_SORTS[rankSort];
-    list.sort((a, b) => sorter.val(b) - sorter.val(a) || b.x - a.x);
-    const medal = (i) => ['🥇', '🥈', '🥉'][i] || `<span class="rank-n">${i + 1}</span>`;
-    const myPos = list.findIndex((x) => x.me);
     app.innerHTML = `
       ${topbar(u)}
       <main class="screen page">
         <h2>🏆 Ranking</h2>
         <div class="card hero-card rank-hero">
-          <div class="row between"><div><div class="muted small">Tu posición (${sorter.name.toLowerCase()})</div><b class="xl">#${myPos + 1}</b> <span class="muted">de ${list.length}</span></div>
+          <div class="row between"><div><div class="muted small">Tu posición (${sorter.name.toLowerCase()})</div><b class="xl" id="mypos">…</b> <span class="muted" id="total"></span></div>
           <div class="big-emoji">${esc(u.profile.avatar)}</div></div>
           <div class="row gap"><button class="btn small" id="share">📤 Compartir mi progreso</button><button class="btn small secondary" id="addf">➕ Agregar amigo</button></div>
         </div>
+        ${cloud ? `<div class="seg scope">${[['friends', '🤝 Amigos'], ['global', '🌎 Global']].map(([k, n]) => `<button data-scope="${k}" class="${k === rankScope ? 'on' : ''}">${n}</button>`).join('')}</div>` : ''}
         <div class="seg">${Object.entries(RANK_SORTS).map(([k, r]) => `<button data-sort="${k}" class="${k === rankSort ? 'on' : ''}">${r.name}</button>`).join('')}</div>
-        <div class="rank-list">${list.map((x, i) => `
-          <${x.me ? 'div' : `a href="#/compare/${encodeURIComponent(x.id)}"`} class="rank-row ${x.me ? 'me' : ''}">
-            <div class="rank-pos">${medal(i)}</div>
-            <div class="rank-av">${esc(x.a)}</div>
-            <div class="grow"><b>${esc(x.n)}${x.me ? ' <span class="tag">Tú</span>' : ''}</b>
-              <div class="small muted">${x.src === 'local' ? '📱 En este teléfono' : x.src === 'friend' ? `🤝 Amigo · actualizado ${ago(x.t)}` : `🔥 ${x.s} · ${x.ls} lecciones`}</div></div>
-            <span class="level-badge sm" style="--c:${levelOf(x.l).color}">${x.c}</span>
-            <div class="rank-val">${sorter.show ? '' : `${sorter.val(x)}<small>${sorter.unit}</small>`}</div>
-            ${x.me ? '' : '<span class="muted">›</span>'}
-          </${x.me ? 'div' : 'a'}>`).join('')}</div>
-        ${list.length === 1 ? `<div class="card center-text"><div class="big-emoji">👥</div><p><b>¡Invita a tus amigos!</b></p><p class="muted small">Comparte tu progreso por WhatsApp. Cuando ellos te envíen el suyo, aparecerán aquí y podrán compararse. Los usuarios registrados en este mismo teléfono aparecen automáticamente.</p></div>` : ''}
-        <p class="small muted center-text">Toca a una persona para comparar niveles y habilidades. Los datos de tus amigos son los de la última vez que compartieron su progreso.</p>
+        <div class="rank-list" id="rlist"><div class="loading">Cargando…</div></div>
+        <div id="rnote"></div>
+        ${!cloud && Cloud.enabled() ? `<div class="card center-text small">☁️ <a href="#/profile">Conecta tu cuenta a la nube</a> para ver a tus amigos <b>en vivo</b> y el ranking global.</div>` : ''}
       </main>
       ${tabbar('community')}`;
     $('#share').addEventListener('click', shareModal);
     $('#addf').addEventListener('click', addFriendModal);
     $$('[data-sort]').forEach((b) => b.addEventListener('click', () => { rankSort = b.dataset.sort; render(); }));
+    $$('[data-scope]').forEach((b) => b.addEventListener('click', () => { rankScope = b.dataset.scope; render(); }));
+    loadRanking(u, cloud);
+  };
+
+  async function loadRanking(u, cloud) {
+    const req = ++rankReq;
+    let list = St.community(u), note = '';
+    if (cloud) {
+      try {
+        if (rankScope === 'global') {
+          const rows = await Cloud.leaderboard(u, rankSort);
+          list = rows.map((r) => fromCloudRow(r, u)).filter(Boolean);
+          if (!list.some((x) => x.me)) list.push({ ...St.summary(u), me: true, src: 'me', outside: true });
+          note = 'Ranking global: personas que eligieron aparecer en público.';
+        } else {
+          const rows = await Cloud.friends(u);
+          const live = rows.map((r) => fromCloudRow(r, u)).filter(Boolean);
+          const localIds = new Set(list.filter((x) => x.src !== 'friend').map((x) => x.id));
+          const liveIds = new Set(live.map((x) => x.lid));
+          list = list.filter((x) => !(x.src === 'friend' && liveIds.has(x.id)));
+          live.forEach((x) => { if (!localIds.has(x.lid)) list.push(x); });
+        }
+      } catch (e) { note = `⚠️ ${esc(e.message)} Mostrando datos guardados en el teléfono.`; }
+    }
+    if (req !== rankReq || !$('#rlist')) return;
+    const sorter = RANK_SORTS[rankSort];
+    list.sort((a, b) => (a.outside ? 1 : 0) - (b.outside ? 1 : 0) || sorter.val(b) - sorter.val(a) || b.x - a.x);
+    const medal = (i) => ['🥇', '🥈', '🥉'][i] || `<span class="rank-n">${i + 1}</span>`;
+    const myPos = list.findIndex((x) => x.me);
+    $('#mypos').textContent = list[myPos] && list[myPos].outside ? '50+' : `#${myPos + 1}`;
+    $('#total').textContent = `de ${list.length}`;
+    const sub = (x) => x.src === 'local' ? '📱 En este teléfono' : x.src === 'friend' ? `🤝 Actualizado ${ago(x.t)}` : x.src === 'cloud' ? `🟢 En vivo · ${ago(x.t) === 'hoy' ? 'activo hoy' : 'activo ' + ago(x.t)}` : `🔥 ${x.s} · ${x.ls} lecciones`;
+    $('#rlist').innerHTML = list.map((x, i) => `
+      <${x.me ? 'div' : `a href="#/friend/${encodeURIComponent(x.id)}"`} class="rank-row ${x.me ? 'me' : ''}">
+        <div class="rank-pos">${x.outside ? '…' : medal(i)}</div>
+        <div class="rank-av">${esc(x.a)}</div>
+        <div class="grow"><b>${esc(x.n)}${x.me ? ' <span class="tag">Tú</span>' : ''}</b><div class="small muted">${sub(x)}</div></div>
+        <span class="level-badge sm" style="--c:${levelOf(x.l).color}">${x.c}</span>
+        <div class="rank-val">${sorter.show ? '' : `${sorter.val(x)}<small>${sorter.unit}</small>`}</div>
+        ${x.me ? '' : '<span class="muted">›</span>'}
+      </${x.me ? 'div' : 'a'}>`).join('');
+    $('#rnote').innerHTML = (list.length === 1 ? `<div class="card center-text"><div class="big-emoji">👥</div><p><b>¡Invita a tus amigos!</b></p><p class="muted small">Toca <b>Compartir mi progreso</b> y envíalo por WhatsApp. Cuando ellos te agreguen o te envíen el suyo, aparecerán aquí.</p></div>` : '')
+      + `<p class="small muted center-text">${note || 'Toca a una persona para ver su perfil completo y compararte.'}</p>`;
+  }
+
+  async function removePerson(o) {
+    if (!confirm(`¿Quitar a ${o.n} de tus amigos?`)) return;
+    if (o.src === 'cloud') {
+      try { await Cloud.removeFriend(St.user(), o.id); } catch (e) { return toast('❌ ' + esc(e.message)); }
+      cloudCache.delete(o.id);
+    } else St.update((x) => St.removeFriend(x, o.id));
+    go('/community');
+  }
+
+  routes.friend = (rawId) => {
+    const o = findPerson(decodeURIComponent(rawId || ''));
+    if (!o) return go('/community');
+    const L = levelOf(o.l), goal = GOALS.find((g) => g.id === o.g);
+    const maxD = Math.max(20, ...o.d7);
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d; });
+    const fresh = o.src === 'cloud' ? '🟢 Datos en vivo' : o.src === 'local' ? '📱 Usuario de este teléfono' : `🤝 Datos de ${ago(o.t)} (cuando compartió su progreso)`;
+    const removable = o.src === 'friend' || o.src === 'cloud';
+    app.innerHTML = `
+      <div class="screen page">
+        <div class="page-head"><a href="#/community" class="back">←</a><h2>Perfil</h2></div>
+        <div class="card center-text friend-head" style="--c:${L.color}">
+          <div class="rank-av big">${esc(o.a)}</div>
+          <h2>${esc(o.n)}</h2>
+          <div class="row gap center wrap">
+            <span class="pill" style="--c:${o.c === 'A0' ? '#999' : levelOf(o.c).color}">🎓 Nivel ${o.c}</span>
+            <span class="pill" style="--c:${L.color}">📘 Estudia ${o.l} · ${o.lp[St.levelIndex(o.l)]}%</span>
+          </div>
+          <div class="small muted friend-meta">
+            ${goal ? `${goal.icon} Objetivo: <b>${goal.name}</b> · ` : ''}${o.m ? `⏱️ Meta: <b>${o.m} min/día</b>` : ''}
+            ${o.j ? `<br>📅 Aprendiendo desde ${new Date(o.j).toLocaleDateString('es', { month: 'long', year: 'numeric' })}` : ''}
+            <br>${fresh}${o.code ? ` · Código: <b>${esc(o.code)}</b>` : ''}
+          </div>
+          <a class="btn" href="#/compare/${encodeURIComponent(o.id)}">⚔️ Compararme con ${esc(o.n.split(' ')[0])}</a>
+        </div>
+        <div class="grid3 stat-grid">
+          <div class="stat"><span>💎</span><b>${o.x}</b><small>XP total</small></div>
+          <div class="stat"><span>📅</span><b>${o.w}</b><small>XP semana</small></div>
+          <div class="stat"><span>🔥</span><b>${o.s}</b><small>Racha (mejor ${o.b})</small></div>
+          <div class="stat"><span>✅</span><b>${o.ls}</b><small>Lecciones</small></div>
+          <div class="stat"><span>👑</span><b>${o.um}</b><small>Unidades dominadas</small></div>
+          <div class="stat"><span>📚</span><b>${o.wd}</b><small>Palabras</small></div>
+          <div class="stat"><span>⏱️</span><b>${o.mt}</b><small>Minutos</small></div>
+          <div class="stat"><span>🎯</span><b>${o.acc}%</b><small>Precisión</small></div>
+          <div class="stat"><span>🎤</span><b>${o.sp}</b><small>Ejercicios de voz</small></div>
+          <div class="stat"><span>✍️</span><b>${o.wc}</b><small>Textos escritos</small></div>
+          <div class="stat"><span>🤖</span><b>${o.tc}</b><small>Charlas con tutor</small></div>
+          <div class="stat"><span>🏆</span><b>${o.ac}</b><small>Logros</small></div>
+        </div>
+        <div class="card"><h4>Actividad de los últimos 7 días</h4>
+          <div class="bars">${o.d7.map((x, i) => `<div class="bar-col"><div class="bar-v" style="height:${Math.max(4, 100 * x / maxD)}%;--c:#ff9600"><small>${x || ''}</small></div><small>${'DLMXJVS'[days[i].getDay()]}</small></div>`).join('')}</div>
+        </div>
+        <div class="card"><h4>Habilidades</h4>${radarChart(o.k)}
+          ${Object.entries(SKILLS).map(([k, sk]) => `<div class="skill-line"><span>${sk.icon} ${sk.name}</span><div class="unit-bar" style="--c:${sk.color}"><div style="width:${o.k[k]}%"></div></div><b>${o.k[k]}</b></div>`).join('')}
+        </div>
+        <div class="card"><h4>Avance por nivel</h4>${LEVELS.map((l, i) => `<div class="skill-line"><span><span class="level-badge sm" style="--c:${l.color}">${l.id}</span> ${l.name}</span><div class="unit-bar" style="--c:${l.color}"><div style="width:${o.lp[i]}%"></div></div><b>${o.lp[i]}%</b></div>`).join('')}</div>
+        <div class="card"><h4>Logros (${o.ach.length || o.ac}/${ACHIEVEMENTS.length})</h4>
+          <div class="achievements">${ACHIEVEMENTS.map((a) => `<div class="ach ${o.ach.includes(a.id) ? 'got' : ''}" title="${a.desc}"><span>${a.icon}</span><small>${a.name}</small></div>`).join('')}</div></div>
+        ${o.wr.length ? `<div class="card"><h4>Evolución de su escritura</h4><div class="bars small">${o.wr.map((w) => `<div class="bar-col"><div class="bar-v" style="height:${w}%;--c:#ce82ff"><small>${w}</small></div></div>`).join('')}</div></div>` : ''}
+        ${!o.j && o.src === 'friend' ? '<p class="note small">ℹ️ Este perfil se compartió con una versión anterior de la app. Pídele que vuelva a compartir su progreso para ver todos los detalles.</p>' : ''}
+        ${removable ? '<button class="btn ghost" id="rm">🗑️ Quitar de mis amigos</button>' : ''}
+      </div>`;
+    const rm = $('#rm'); if (rm) rm.addEventListener('click', () => removePerson(o));
   };
 
   routes.compare = (rawId) => {
     const u = St.user();
-    const id = decodeURIComponent(rawId || '');
-    const list = St.community(u);
-    const me = list.find((x) => x.me), o = list.find((x) => x.id === id && !x.me);
+    const o = findPerson(decodeURIComponent(rawId || ''));
     if (!o) return go('/community');
+    const me = { ...St.summary(u), me: true };
     const rows = [
       ['🎓', 'Nivel certificado', (x) => (x.c === 'A0' ? -1 : St.levelIndex(x.c)), (x) => x.c],
       ['📘', 'Nivel en estudio', (x) => St.levelIndex(x.l) * 1000 + (x.lp[St.levelIndex(x.l)] || 0), (x) => `${x.l} · ${x.lp[St.levelIndex(x.l)] || 0}%`],
@@ -1032,7 +1222,10 @@
       ['🔥', 'Racha actual', (x) => x.s],
       ['🏅', 'Mejor racha', (x) => x.b],
       ['✅', 'Lecciones', (x) => x.ls],
+      ['👑', 'Unidades dominadas', (x) => x.um],
       ['📚', 'Palabras', (x) => x.wd],
+      ['⏱️', 'Minutos de estudio', (x) => x.mt],
+      ['🎯', 'Precisión', (x) => x.acc, (x) => `${x.acc}%`],
       ['🏆', 'Logros', (x) => x.ac]
     ];
     let myWins = 0, hisWins = 0;
@@ -1042,18 +1235,18 @@
       const f = show || val;
       return `<div class="cmp-row"><div class="cmp-v ${a > b ? 'win' : ''}">${esc(f(me))}</div><div class="cmp-l">${ic}<small>${label}</small></div><div class="cmp-v ${b > a ? 'win' : ''}">${esc(f(o))}</div></div>`;
     };
+    const statsHtml = rows.map(rowHtml).join('');
     const skillRows = Object.entries(SKILLS).map(([k, sk]) => {
       const a = me.k[k] || 0, b = o.k[k] || 0;
       return `<div class="cmp-skill"><div class="half left"><b class="${a > b ? 'win-t' : ''}">${a}</b><div class="hbar me"><div style="width:${a}%"></div></div></div>
         <div class="cmp-l">${sk.icon}<small>${sk.name}</small></div>
         <div class="half"><div class="hbar"><div style="width:${b}%"></div></div><b class="${b > a ? 'win-t' : ''}">${b}</b></div></div>`;
     }).join('');
-    const statsHtml = rows.map(rowHtml).join('');
     const verdict = myWins > hisWins ? `¡Vas ganando ${myWins} a ${hisWins}! 💪` : hisWins > myWins ? `${esc(o.n)} va ganando ${hisWins} a ${myWins}. ¡Tú puedes alcanzarle! 🚀` : `¡Empate ${myWins} a ${hisWins}! 🤝`;
     const gap = o.x - me.x;
     app.innerHTML = `
       <div class="screen page">
-        <div class="page-head"><a href="#/community" class="back">←</a><h2>Comparar</h2></div>
+        <div class="page-head"><a href="#/friend/${encodeURIComponent(o.id)}" class="back">←</a><h2>Comparar</h2></div>
         <div class="vs">
           <div class="vs-p"><div class="rank-av big">${esc(me.a)}</div><b>Tú</b><span class="level-badge" style="--c:${levelOf(me.l).color}">${me.c}</span></div>
           <div class="vs-x">VS</div>
@@ -1069,12 +1262,222 @@
           <div class="cmp-skill"><div class="half left"><b>${me.lp[i]}%</b><div class="hbar me"><div style="width:${me.lp[i]}%"></div></div></div>
           <div class="cmp-l"><span class="level-badge sm" style="--c:${L.color}">${L.id}</span></div>
           <div class="half"><div class="hbar"><div style="width:${o.lp[i]}%"></div></div><b>${o.lp[i]}%</b></div></div>`).join('')}</div>
-        <p class="small muted center-text">${o.src === 'friend' ? `Datos de ${esc(o.n)} actualizados ${ago(o.t)}.` : 'Usuario de este teléfono · datos en vivo.'}</p>
-        ${o.src === 'friend' ? '<button class="btn ghost" id="rm">🗑️ Quitar de mi ranking</button>' : ''}
+        <p class="small muted center-text">${o.src === 'cloud' ? 'Datos en vivo desde la nube.' : o.src === 'friend' ? `Datos de ${esc(o.n)} de ${ago(o.t)}.` : 'Usuario de este teléfono · datos en vivo.'}</p>
       </div>`;
-    const rm = $('#rm');
-    if (rm) rm.addEventListener('click', () => { if (confirm(`¿Quitar a ${o.n} de tu ranking?`)) { St.update((x) => St.removeFriend(x, o.id)); go('/community'); } });
   };
+
+  /* ------------------ TUTOR DE CONVERSACIÓN CON IA ------------------ */
+  const TUTOR_SCENARIOS = [
+    { id: 'free', icon: '💬', name: 'Charla libre', desc: 'Platica de lo que quieras', prompt: "A relaxed, friendly chat about the learner's life, hobbies, plans and opinions. Let the learner lead the topics." },
+    { id: 'friends', icon: '🤝', name: 'Conocer a alguien', desc: 'Una plática como en una fiesta', prompt: 'You just met the learner at a party / language exchange. Get to know each other naturally.' },
+    { id: 'cafe', icon: '☕', name: 'En la cafetería', desc: 'Pedir y platicar con el barista', prompt: 'You are a barista at a busy café; the learner is a customer. Include small talk, prices and a small problem (an item is sold out).' },
+    { id: 'shopping', icon: '🛍️', name: 'De compras', desc: 'Tallas, precios, devoluciones', prompt: 'You are a shop assistant in a clothing store. Talk about sizes, colours, prices and returns.' },
+    { id: 'travel', icon: '✈️', name: 'Aeropuerto', desc: 'Documentar, equipaje, retrasos', prompt: 'You are an airline check-in agent. Cover check-in, luggage, seats, a flight delay and the learner\'s travel plans.' },
+    { id: 'hotel', icon: '🏨', name: 'Hotel', desc: 'Registro y problemas con el cuarto', prompt: 'You are a hotel receptionist. Check the learner in, handle a small room problem and recommend places in the city.' },
+    { id: 'doctor', icon: '🩺', name: 'En el médico', desc: 'Explicar síntomas', prompt: 'You are a kind doctor. Ask about symptoms and give simple advice.' },
+    { id: 'interview', icon: '💼', name: 'Entrevista de trabajo', desc: 'Preguntas típicas', min: 'A2', prompt: 'You are a hiring manager interviewing the learner for a job they choose at the start. Ask typical interview questions with follow-ups.' },
+    { id: 'debate', icon: '🎤', name: 'Debate de opinión', desc: 'Defiende tus ideas', min: 'B1', prompt: 'You are a friendly debate partner. Propose a light, interesting topic, take a side and encourage the learner to defend their opinion with reasons.' }
+  ];
+  const PERSONAS = [
+    { id: 'emma', name: 'Emma', flag: '🇬🇧', avatar: '👩🏼', accent: 'en-GB', desc: 'Emma, a 28-year-old graphic designer from London' },
+    { id: 'jake', name: 'Jake', flag: '🇺🇸', avatar: '👨🏻', accent: 'en-US', desc: 'Jake, a 30-year-old chef from Chicago' },
+    { id: 'olivia', name: 'Olivia', flag: '🇦🇺', avatar: '👩🏽', accent: 'en-AU', desc: 'Olivia, a 25-year-old surf instructor from Sydney' }
+  ];
+  let tutorPersona = 'emma', tutorCustom = '';
+
+  routes.tutor = (scId) => {
+    const u = St.user();
+    if (!Cloud.enabled() || !Cloud.connected(u)) {
+      app.innerHTML = `
+        <div class="screen page">
+          <div class="page-head"><a href="#/practice" class="back">←</a><h2>🤖 Tutor con IA</h2></div>
+          <div class="card center-text"><div class="big-emoji">🗣️</div>
+            <h3>Conversaciones reales con corrección</h3>
+            <p class="muted">Platica por voz con un tutor de inglés con IA que te responde como una persona real, mantiene la conversación y te corrige cada frase.</p>
+            ${Cloud.enabled()
+              ? '<p><b>Conecta tu cuenta a la nube para usarlo.</b></p><a class="btn" href="#/profile">☁️ Conectar en mi perfil</a>'
+              : '<p class="note small">Esta función necesita que el administrador configure la nube (ver <b>GUIA_NUBE.md</b> en el proyecto).</p>'}
+          </div>
+          <a class="btn secondary" href="#/chat">💬 Mientras tanto: diálogos guiados (sin internet)</a>
+        </div>`;
+      return;
+    }
+    if (!scId) return tutorMenu(u);
+    const sc = scId === 'custom' ? { id: 'custom', icon: '✨', name: 'Tema propio', prompt: `A natural conversation about this topic chosen by the learner: ${tutorCustom || 'everyday life'}.` } : TUTOR_SCENARIOS.find((s) => s.id === scId);
+    if (!sc) return go('/tutor');
+    tutorChat(u, sc, PERSONAS.find((p) => p.id === tutorPersona) || PERSONAS[0]);
+  };
+
+  function tutorMenu(u) {
+    const sessions = (u.progress.tutorSessions || []).slice(0, 5);
+    app.innerHTML = `
+      <div class="screen page">
+        <div class="page-head"><a href="#/practice" class="back">←</a><h2>🤖 Tutor con IA</h2></div>
+        <p class="muted">Habla con una persona virtual que te responde de forma natural y <b>te corrige cada frase</b>. Usa el micrófono 🎤 o escribe.</p>
+        <h4>Elige con quién hablar</h4>
+        <div class="persona-row">${PERSONAS.map((p) => `<button class="persona ${p.id === tutorPersona ? 'on' : ''}" data-p="${p.id}"><span>${p.avatar}</span><b>${p.name} ${p.flag}</b></button>`).join('')}</div>
+        <h4>Elige la situación</h4>
+        <div class="skill-list">${TUTOR_SCENARIOS.map((s) => {
+          const locked = s.min && St.levelIndex(u.level) < St.levelIndex(s.min);
+          return `<a class="skill-row ${locked ? 'locked' : ''}" href="${locked ? 'javascript:void 0' : `#/tutor/${s.id}`}"><span class="big-emoji">${s.icon}</span><div class="grow"><b>${s.name}</b><div class="small muted">${s.desc}${locked ? ` · desde nivel ${s.min}` : ''}</div></div><span>${locked ? '🔒' : '›'}</span></a>`;
+        }).join('')}</div>
+        <div class="card"><b>✨ Tema propio</b><div class="row gap"><input id="topic" placeholder="Ej: fútbol, mi trabajo, recetas..." maxlength="80"><button class="btn small" id="go">Ir</button></div></div>
+        ${sessions.length ? `<h4>Tus últimas conversaciones</h4>${sessions.map((s) => `<div class="card small"><b>${esc(s.name)}</b> · ${new Date(s.date).toLocaleDateString('es')} · Nivel estimado <b>${esc(s.level)}</b><br>Fluidez ${s.fluency} · Gramática ${s.grammar} · Vocabulario ${s.vocabulary}</div>`).join('')}` : ''}
+      </div>`;
+    $$('[data-p]').forEach((b) => b.addEventListener('click', () => { tutorPersona = b.dataset.p; $$('[data-p]').forEach((x) => x.classList.toggle('on', x === b)); }));
+    $('#go').addEventListener('click', () => { tutorCustom = $('#topic').value.trim().slice(0, 80); if (tutorCustom) go('/tutor/custom'); });
+  }
+
+  function tutorChat(u, sc, persona) {
+    const history = [];           // lo que se envía a la IA
+    const stats = { turns: 0, errors: 0, spoken: 0, scores: [] };
+    let busy = false, handsFree = false, ended = false;
+    leaveGuard = () => ended || stats.turns === 0 || confirm('¿Salir de la conversación? No se guardará la evaluación.');
+    app.innerHTML = `
+      <div class="screen chat-screen tutor">
+        <div class="page-head"><a href="#/tutor" class="back">←</a>
+          <div class="grow"><b>${persona.avatar} ${persona.name} ${persona.flag}</b><div class="small muted">${sc.icon} ${esc(sc.name)} · nivel ${u.level}</div></div>
+          <button class="btn small secondary" id="end">Terminar</button></div>
+        <div class="chat-log" id="log"></div>
+        <div class="suggest" id="sugg"></div>
+        <div class="tutor-bar">
+          <label class="toggle small"><input type="checkbox" id="hf"> 🎧 Modo conversación (manos libres)</label>
+          <div class="row gap">
+            <button class="mic-btn sm" id="mic" aria-label="Hablar">🎤</button>
+            <input id="txt" placeholder="Habla o escribe en inglés..." autocomplete="off" autocapitalize="sentences">
+            <button class="btn small" id="send">➤</button>
+          </div>
+          <div class="small muted center-text" id="left"></div>
+        </div>
+      </div>`;
+    const log = $('#log'), txt = $('#txt'), mic = $('#mic'), sugg = $('#sugg');
+    if (!Sp.canListen()) { mic.style.display = 'none'; $('#hf').parentElement.style.display = 'none'; }
+
+    const scroll = () => { log.scrollTop = log.scrollHeight; };
+    const addBot = (r) => {
+      log.insertAdjacentHTML('beforeend', `<div class="msg bot pop"><div class="msg-bubble">${esc(r.reply)}
+        <div class="msg-tools"><button class="btn-speaker tiny" data-say="${esc(r.reply)}">🔊</button><button class="tr-btn">🇪🇸</button></div>
+        <div class="msg-sub hidden">${esc(r.reply_es || '')}</div></div></div>`);
+      const el = log.lastElementChild;
+      el.querySelectorAll('[data-say]').forEach((b) => b.addEventListener('click', () => Sp.speak(b.dataset.say, { lang: persona.accent })));
+      el.querySelector('.tr-btn').addEventListener('click', () => el.querySelector('.msg-sub').classList.toggle('hidden'));
+      sugg.innerHTML = (r.suggestions || []).slice(0, 3).map((s) => `<button class="chip-s">${esc(s)}</button>`).join('');
+      $$('.chip-s', sugg).forEach((b) => b.addEventListener('click', () => { txt.value = b.textContent; txt.focus(); }));
+      scroll();
+    };
+    const addMe = (text) => {
+      log.insertAdjacentHTML('beforeend', `<div class="msg me pop"><div class="msg-bubble">${esc(text)}</div></div><div class="corr-slot"></div>`);
+      scroll();
+      return log.lastElementChild;
+    };
+    const showCorrection = (slot, r) => {
+      if (r.has_error && r.corrected) {
+        slot.innerHTML = `<div class="corr pop"><div>✏️ <b>Mejor dicho:</b> ${esc(r.corrected)} <button class="btn-speaker tiny" data-say="${esc(r.corrected)}">🔊</button></div>${r.explanation_es ? `<div class="small">${esc(r.explanation_es)}</div>` : ''}</div>`;
+        Ex.bindSpeakers(slot);
+      } else slot.innerHTML = `<div class="corr ok pop">✅ ¡Bien dicho!${r.score ? ` <span class="muted">${r.score}/100</span>` : ''}</div>`;
+      scroll();
+    };
+    const typing = (on) => {
+      const t = $('#typing', log);
+      if (on && !t) { log.insertAdjacentHTML('beforeend', `<div class="msg bot" id="typing"><div class="msg-bubble typing"><span></span><span></span><span></span></div></div>`); scroll(); }
+      if (!on && t) t.remove();
+    };
+    const payload = (mode) => ({ mode, level: u.level, persona: persona.desc, scenario: sc.prompt, learner: u.name.split(' ')[0], history: history.slice(-14) });
+
+    async function ask(slot) {
+      busy = true; typing(true);
+      try {
+        const r = await Cloud.tutor(St.user(), payload('chat'));
+        typing(false);
+        if (slot) {
+          showCorrection(slot, r);
+          stats.scores.push(r.score || 0);
+          if (r.has_error) stats.errors++;
+          St.update((x) => St.recordSkill(x, 'grammar', !r.has_error));
+        }
+        history.push({ role: 'assistant', content: r.reply });
+        addBot(r);
+        if (typeof r.remaining === 'number') $('#left').textContent = `Te quedan ${r.remaining} mensajes con el tutor hoy`;
+        busy = false;
+        await Sp.speak(r.reply, { lang: persona.accent });
+        if (handsFree && !ended) listen();
+      } catch (e) {
+        typing(false); busy = false;
+        if (slot && history.length && history[history.length - 1].role === 'user') { history.pop(); slot.previousElementSibling.remove(); slot.remove(); stats.turns--; }
+        log.insertAdjacentHTML('beforeend', `<div class="msg hint"><div class="msg-bubble">⚠️ ${esc(e.message)}</div></div>`); scroll();
+        handsFree = false; $('#hf').checked = false;
+      }
+    }
+    function send(text, spoken) {
+      text = (text || '').trim();
+      if (!text || busy || ended) return;
+      txt.value = ''; sugg.innerHTML = '';
+      stats.turns++; if (spoken) stats.spoken++;
+      if (spoken) St.update((x) => { x.progress.speakCount++; });
+      history.push({ role: 'user', content: text.slice(0, 500) });
+      const meEl = addMe(text);
+      ask(meEl);
+    }
+    async function listen() {
+      if (busy || ended) return;
+      mic.classList.add('recording'); txt.placeholder = 'Escuchando... habla ahora';
+      try {
+        const r = await Sp.listen({ onInterim: (t) => { txt.value = t; } });
+        mic.classList.remove('recording'); txt.placeholder = 'Habla o escribe en inglés...';
+        send(r.alternatives[0], true);
+      } catch (e) {
+        mic.classList.remove('recording'); txt.placeholder = 'Habla o escribe en inglés...';
+        if (e.message === 'not-allowed') toast('Permite el acceso al micrófono');
+        handsFree = false; $('#hf').checked = false;
+      }
+    }
+    mic.addEventListener('click', () => { if (mic.classList.contains('recording')) Sp.stopListening(); else listen(); });
+    $('#send').addEventListener('click', () => send(txt.value, false));
+    txt.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(txt.value, false); });
+    $('#hf').addEventListener('change', (e) => { handsFree = e.target.checked; if (handsFree && !busy) listen(); });
+    $('#end').addEventListener('click', () => finish());
+
+    async function finish() {
+      if (stats.turns < 2) { ended = true; leaveGuard = null; return go('/tutor'); }
+      if (busy) return;
+      ended = true; leaveGuard = null; Sp.stopListening();
+      app.innerHTML = `<div class="screen center"><div class="mascot bounce">${persona.avatar}</div><h2>Evaluando tu conversación…</h2><p class="muted">${persona.name} está revisando lo que dijiste.</p></div>`;
+      let r;
+      try { r = await Cloud.tutor(St.user(), payload('summary')); }
+      catch (e) { toast('❌ ' + esc(e.message), 3500); return go('/tutor'); }
+      const xp = Math.min(40, 10 + stats.turns * 2);
+      let got = [];
+      St.update((x) => {
+        St.addXP(x, xp);
+        St.recordSkill(x, 'speaking', (r.fluency || 0) >= 60);
+        St.recordSkill(x, 'vocab', (r.vocabulary_score || 0) >= 60);
+        x.progress.tutorSessions = [{ date: Date.now(), name: sc.name, level: r.level_estimate, fluency: r.fluency, grammar: r.grammar, vocabulary: r.vocabulary_score, turns: stats.turns }, ...(x.progress.tutorSessions || [])].slice(0, 30);
+        got = St.checkAchievements(x, { chat: true });
+      });
+      Sp.beep('done');
+      app.innerHTML = `
+        <div class="screen page result">
+          <div class="center-text"><div class="mascot">${persona.avatar}</div><h2>¡Conversación terminada!</h2><p>${esc(r.overall_es)}</p></div>
+          <div class="grid3 result-stats wide">
+            <div class="rs acc"><small>Fluidez</small><b>${r.fluency}</b></div>
+            <div class="rs time"><small>Gramática</small><b>${r.grammar}</b></div>
+            <div class="rs xp"><small>Vocabulario</small><b>${r.vocabulary_score}</b></div>
+          </div>
+          <p class="center-text">Nivel estimado en esta charla: <span class="level-badge sm" style="--c:${levelOf(r.level_estimate).color}">${esc(r.level_estimate)}</span> · <b>+${xp} XP</b></p>
+          ${r.strengths_es && r.strengths_es.length ? `<div class="card"><h4>💪 Lo que hiciste bien</h4>${r.strengths_es.map((s) => `<p>✅ ${esc(s)}</p>`).join('')}</div>` : ''}
+          ${r.improvements && r.improvements.length ? `<div class="card"><h4>✏️ Para mejorar</h4>${r.improvements.map((i) => `<div class="impr"><div class="w-bad">${esc(i.original)}</div><div class="w-ok">→ ${esc(i.corrected)} <button class="btn-speaker tiny" data-say="${esc(i.corrected)}">🔊</button></div><div class="small muted">${esc(i.explanation_es)}</div></div>`).join('')}</div>` : ''}
+          ${r.vocabulary && r.vocabulary.length ? `<div class="card"><h4>📚 Vocabulario útil</h4><div class="vocab-list">${r.vocabulary.map((v) => `<button class="vocab-item" data-say="${esc(v.en)}">🔊 <b>${esc(v.en)}</b> <span class="muted">${esc(v.es)}</span></button>`).join('')}</div>
+            <button class="btn small secondary" id="addw">➕ Agregar a mis tarjetas de repaso</button></div>` : ''}
+          <div class="stack"><a class="btn" href="#/tutor">Otra conversación</a><a class="btn secondary" href="#/practice">Volver a práctica</a></div>
+        </div>`;
+      Ex.bindSpeakers(app);
+      const addw = $('#addw');
+      if (addw) addw.addEventListener('click', () => { St.update((x) => St.learnWords(x, r.vocabulary.map((v) => [v.en.slice(0, 60), v.es.slice(0, 60), '💬']))); addw.disabled = true; addw.textContent = '✅ Agregadas'; });
+      announceAchievements(got);
+    }
+
+    ask(null); // el tutor saluda primero
+  }
 
   /* ------------------ PERFIL Y AJUSTES ------------------ */
   routes.profile = () => {
@@ -1101,6 +1504,19 @@
           <label class="toggle"><input type="checkbox" id="sound" ${s.sound !== false ? 'checked' : ''}> Efectos de sonido</label>
           <div class="small muted">Reconocimiento de voz: ${Sp.canListen() ? '✅ disponible' : '❌ no disponible en este navegador (usa Chrome o Safari)'}</div>
         </div>
+        <div class="card" id="cloud-card">
+          <h4>☁️ Nube</h4>
+          ${!Cloud.enabled() ? `<p class="small muted">La nube no está configurada en esta app. Con ella tendrías: progreso sincronizado entre teléfonos, ranking de amigos en vivo y el tutor con IA.</p>`
+            : Cloud.connected(u) ? `
+              <p class="small">✅ Conectada${u.syncedAt ? ` · sincronizado ${new Date(u.syncedAt).toLocaleString('es', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}` : ''}</p>
+              <p>Tu código de amigo: <b class="friend-code inline" id="fc">…</b></p>
+              <label class="toggle"><input type="checkbox" id="pub" ${s.publicProfile !== false ? 'checked' : ''}> Aparecer en el ranking global</label>
+              <div class="stack"><button class="btn small secondary" id="sync">🔄 Sincronizar ahora</button><button class="btn small ghost" id="disc">Desconectar de la nube</button></div>`
+            : `
+              <p class="small muted">Conecta tu cuenta para guardar tu progreso en la nube (y usarlo en otro teléfono), ver a tus amigos en vivo y hablar con el tutor de IA.</p>
+              <input type="password" id="cpw" placeholder="Escribe tu contraseña de EnglishUp" autocomplete="current-password">
+              <button class="btn small" id="cconn">☁️ Conectar</button>`}
+        </div>
         <div class="card">
           <h4>🎨 Apariencia</h4>
           <label class="toggle"><input type="checkbox" id="dark" ${s.dark ? 'checked' : ''}> Modo oscuro</label>
@@ -1114,7 +1530,7 @@
             <button class="btn small danger" id="delete">🗑️ Eliminar cuenta</button>
           </div>
         </div>
-        <p class="small muted center-text">EnglishUp v1.0 · Funciona sin conexión</p>
+        <p class="small muted center-text">EnglishUp v1.2 · Funciona sin conexión</p>
       </main>
       ${tabbar('profile')}`;
     const set = (fn) => { St.update(fn); applySettings(St.user()); };
@@ -1128,6 +1544,28 @@
     $('#test-voice').addEventListener('click', () => Sp.speak('Hello! Welcome to English Up. Let\'s learn together.'));
     $('#sound').addEventListener('change', (e) => set((x) => { x.settings.sound = e.target.checked; }));
     $('#dark').addEventListener('change', (e) => set((x) => { x.settings.dark = e.target.checked; }));
+    if (Cloud.connected(u)) {
+      Cloud.myProfile(u).then((p) => { const el = $('#fc'); if (el && p) el.textContent = p.friend_code; }).catch(() => { const el = $('#fc'); if (el) el.textContent = 'sin conexión'; });
+      $('#pub').addEventListener('change', (e) => { set((x) => { x.settings.publicProfile = e.target.checked; }); toast(e.target.checked ? '🌎 Apareces en el ranking global' : '🔒 Solo tus amigos te verán'); });
+      $('#sync').addEventListener('click', async () => {
+        try { await Cloud.push(St.user()); St.markSynced(); toast('✅ Sincronizado'); render(); } catch (e) { toast('❌ ' + esc(e.message)); }
+      });
+      $('#disc').addEventListener('click', () => { if (confirm('¿Desconectar este teléfono de la nube? Tu progreso se queda aquí y en la nube.')) { set((x) => { delete x.cloud; }); render(); } });
+    } else if (Cloud.enabled()) {
+      $('#cconn').addEventListener('click', async (ev) => {
+        const pw = $('#cpw').value;
+        if (!pw) return toast('Escribe tu contraseña');
+        ev.target.disabled = true;
+        try {
+          await St.login(u.email, pw); // verifica la contraseña local
+          const session = await Cloud.signInOrUp(u.email, pw, u.name);
+          St.attachCloud(session);
+          await syncOnStart();
+          toast('☁️ ¡Cuenta conectada a la nube!');
+          render();
+        } catch (e) { toast('❌ ' + esc(e.message), 4000); ev.target.disabled = false; }
+      });
+    }
     $('#export').addEventListener('click', () => {
       const blob = new Blob([St.exportData()], { type: 'application/json' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `englishup-${u.name}.json`; a.click();
@@ -1143,7 +1581,10 @@
   };
 
   /* ------------------ INICIO ------------------ */
+  St.setOnChange(() => Cloud.scheduleSync());
   render();
+  syncOnStart();
+  window.addEventListener('online', () => Cloud.scheduleSync());
 
   // PWA: registrar service worker y prompt de instalación
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

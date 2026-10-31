@@ -17,6 +17,8 @@ y funciona **sin conexión**. No necesita tiendas de aplicaciones ni servidor.
 | ✍️ **Análisis de escritura** | Detecta errores típicos (I minúscula, “people is”, “I have 20 years”, “he don’t”, “did went”, “more better”, a/an, preposiciones, falsos amigos…), ortografía, mayúsculas, puntuación, repeticiones, longitud, variedad de vocabulario, conectores y uso de las estructuras de la lección. |
 | 🔊 **Audio** | Todo el inglés se puede escuchar (normal y 🐢 lento), acento 🇺🇸 / 🇬🇧 / 🇦🇺 y velocidad ajustables. |
 | 💪 **Práctica** | Repaso de errores, tarjetas con **repetición espaciada** (Leitner), práctica por habilidad, laboratorio de voz, laboratorio de escritura, **conversaciones simuladas** (cafetería, hotel, entrevista, reclamación) y guía gramatical con buscador. |
+| 🤖 **Tutor con IA** *(requiere nube)* | Conversaciones reales por voz con Emma 🇬🇧, Jake 🇺🇸 u Olivia 🇦🇺 en 9 situaciones (o tema propio). Responden con naturalidad, corrigen cada frase con explicación en español, sugieren respuestas, tienen modo manos libres y al final evalúan fluidez, gramática y vocabulario. Usa Claude Haiku 5.5 con límite diario para gastar lo mínimo. |
+| 👥 **Perfil de amigos** | Perfil completo de cada amigo: niveles, objetivo, actividad de 7 días, habilidades, avance por nivel, logros y evolución de su escritura. |
 | 🏆 **Ranking y comparación** | Ranking por XP de la semana, XP total, nivel o racha. Incluye a los usuarios del mismo teléfono y a los amigos que compartan su progreso por enlace (WhatsApp, etc.). Pantalla “Tú vs. amigo” con niveles, estadísticas, radar de habilidades superpuesto y avance por nivel. |
 | 📊 **Progreso** | Nivel certificado y nivel en estudio, XP, racha 🔥 con protectores, gráfico de 7 días, calendario de actividad, radar de habilidades, avance por nivel, evolución de la escritura y 14 logros. |
 | ⚙️ **Perfil** | Cambiar objetivo/meta, repetir prueba de nivel, modo oscuro, sonidos, exportar/importar copia de seguridad, cerrar sesión y eliminar cuenta. |
@@ -40,6 +42,12 @@ python3 -m http.server 8080
 ```
 Luego abre `http://localhost:8080` (usa la vista móvil de las herramientas de desarrollador).
 
+## ☁️ Nube y tutor con IA
+
+Opcional y gratis para empezar: sigue **[GUIA_NUBE.md](GUIA_NUBE.md)**. Activa cuentas sincronizadas entre
+teléfonos, ranking de amigos **en vivo** (y global) y el tutor de conversación con IA. Sin configurarla,
+la app funciona igual, solo en el teléfono.
+
 ## 🗂️ Estructura
 
 ```
@@ -54,6 +62,10 @@ js/analysis.js          Corrección de respuestas, análisis de escritura y de p
 js/speech.js            Voz: escuchar (síntesis), hablar (reconocimiento), grabar, sonidos
 js/store.js             Usuarios, progreso, racha, repetición espaciada, plan de estudio
 js/app.js               Pantallas y navegación
+js/config.js            Datos públicos del proyecto de Supabase (vacío = sin nube)
+js/cloud.js             Nube: cuentas, sincronización, ranking en vivo, tutor IA
+supabase/schema.sql     Base de datos y reglas de seguridad (pegar en Supabase)
+supabase/functions/tutor/index.ts   Servidor del tutor IA (guarda la clave de Anthropic)
 ```
 
 ## ➕ Agregar contenido
