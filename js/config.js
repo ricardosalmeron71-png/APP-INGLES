@@ -7,6 +7,6 @@
    Si se dejan vacías, la app funciona igual, pero solo en el teléfono (sin nube ni tutor IA).
    ========================================================= */
 window.EU_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://bwdkfahrgvqfqxryjfll.supabase.co',
+  supabaseAnonKey: 'sb_publishable_p68umFTv9fGsdIrymJRO2Q_l-wYd1_p'
 };
