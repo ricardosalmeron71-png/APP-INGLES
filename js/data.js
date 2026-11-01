@@ -868,7 +868,9 @@ window.DATA = (function () {
     { id: 'chat', icon: '💬', name: 'Conversador', desc: 'Completa una conversación' },
     { id: 'review', icon: '🧠', name: 'Memoria de acero', desc: 'Repasa tus errores' },
     { id: 'social', icon: '🤝', name: 'En equipo', desc: 'Agrega a un amigo para comparar progreso' },
-    { id: 'verbs50', icon: '🔤', name: 'Maestro de verbos', desc: 'Domina 50 verbos' }
+    { id: 'verbs50', icon: '🔤', name: 'Maestro de verbos', desc: 'Domina 50 verbos' },
+    { id: 'pron50', icon: '🎙️', name: 'Voz clara', desc: 'Pronuncia bien 50 palabras distintas' },
+    { id: 'twister', icon: '🗣️', name: 'Trabalenguas', desc: 'Saca 80+ en un trabalenguas' }
   ];
 
   const GOALS = [

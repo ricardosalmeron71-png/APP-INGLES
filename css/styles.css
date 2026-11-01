@@ -531,3 +531,21 @@ button.skill-row { width: 100%; background: var(--card); font: inherit; text-ali
 #send.ready { animation: pulse 1.2s infinite; }
 .topic-row { cursor: pointer; }
 .topic-row .icon-btn { font-size: 1.1rem; }
+
+/* ---------- entrenador de pronunciación ---------- */
+.coach-sound { display: flex; align-items: center; gap: 8px; margin: -6px 0 10px; font-size: 1rem; }
+.coach-sound span { font-size: 1.5rem; } .coach-sound small { color: var(--muted); }
+.big-word { font-size: 2.4rem; }
+.how { text-align: left; margin: 8px 0 0; padding-left: 22px; font-size: .92rem; color: var(--text); }
+.how.hidden { display: none; }
+.coach-steps { margin: 6px 0; padding-left: 22px; font-size: .92rem; }
+.coach-steps li { margin: 4px 0; }
+.chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.sound-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 14px; }
+.sound-card { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; padding: 12px 8px; border: 2px solid var(--border); border-radius: 16px; text-decoration: none; color: var(--text); background: var(--card); box-shadow: 0 3px 0 var(--border); }
+.sound-card .sc-ico { font-size: 2rem; } .sound-card small { color: var(--muted); font-size: .72rem; }
+.sound-card .unit-bar { width: 100%; }
+.sc-new { background: var(--blue); color: #fff; font-size: .65rem; font-weight: 800; padding: 1px 8px; border-radius: 8px; margin-top: 4px; }
+.pairs { display: grid; gap: 6px; }
+.pair { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.coach-hero .ring { --s: 72px; }

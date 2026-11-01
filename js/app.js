@@ -627,8 +627,9 @@
         <div class="grid2">
           <a class="practice-card" href="#/mistakes" style="--c:#ff4b4b"><span>🧠</span><b>Repasar errores</b><small>${mist} pendientes</small></a>
           <a class="practice-card" href="#/flashcards" style="--c:#1cb0f6"><span>🃏</span><b>Tarjetas</b><small>${dueW} para hoy · ${Object.keys(u.progress.words).length} palabras</small></a>
-          <a class="practice-card" href="#/voicelab" style="--c:#ff9600"><span>🎤</span><b>Laboratorio de voz</b><small>Pronunciación con análisis</small></a>
+          <a class="practice-card" href="#/voicelab" style="--c:#e08700"><span>🎤</span><b>Laboratorio de voz</b><small>Practica cualquier frase</small></a>
           <a class="practice-card" href="#/writelab" style="--c:#ce82ff"><span>✍️</span><b>Laboratorio de escritura</b><small>Corrección detallada</small></a>
+          <a class="practice-card" href="#/coach" style="--c:#ff4b4b"><span>🎙️</span><b>Entrenador de pronunciación</b><small>Te escucha y te corrige sonido por sonido</small></a>
           <a class="practice-card" href="#/verbs" style="--c:#ff9600"><span>🔤</span><b>Verbos</b><small>Regulares e irregulares: juegos, repaso y consulta</small></a>
           <a class="practice-card" href="#/tutor" style="--c:#58cc02"><span>🤖</span><b>Tutor con IA</b><small>Conversación real por voz con correcciones</small></a>
           <a class="practice-card" href="#/chat" style="--c:#2bb673"><span>💬</span><b>Diálogos guiados</b><small>Situaciones con opciones · sin internet</small></a>
@@ -949,6 +950,150 @@
         St.update((x) => { const p = (x.progress.verbs = x.progress.verbs || {}); p[base] = { ...(p[base] || { box: 1, ok: 0, bad: 0 }), due: St.today() }; });
         e.target.disabled = true; e.target.textContent = '✅ Agregado al repaso de hoy';
       });
+    });
+  }
+
+
+  /* ------------------ ENTRENADOR DE PRONUNCIACIÓN ------------------ */
+  const Pn = window.Pron;
+  const coachHooks = (u, sink) => {
+    const base = lessonHooks(u);
+    return {
+      ...base,
+      onResult: (ex, ok, retry) => {
+        base.onResult(ex, ok, retry);
+        if (ex.pron && !retry) St.update((x) => Pn.record(x, ex.sound, null, ok));
+      },
+      onCoach: (ex, res) => {
+        if (sink) sink.push({ sound: ex.sound, text: ex.text, kind: ex.kind, ok: res.ok, score: res.score, skipped: !!res.skipped });
+        St.update((x) => {
+          if (ex.kind === 'word') Pn.record(x, ex.sound, ex.text, res.ok);
+          else (res.analysis.tagged || []).forEach((t) => Pn.record(x, t.sound, t.word, t.ok));
+          if (ex.kind === 'twister' && !res.skipped) { const p = Pn.store(x); p.twisters[ex.sound] = Math.max(p.twisters[ex.sound] || 0, res.score); }
+        });
+      }
+    };
+  };
+
+  routes.coach = (sub, a, b) => {
+    if (sub === 'sound') return coachSound(a);
+    if (sub === 'play') return coachPlay(a, b);
+    if (sub === 'twisters') return coachTwisters();
+    const u = St.user();
+    const ov = Pn.overall(u), seen = Pn.SOUNDS.filter((s) => Pn.mastery(u, s.id) != null).length;
+    const weakW = Pn.weakWords(u).length;
+    const card = (s) => {
+      const m = Pn.mastery(u, s.id);
+      return `<a class="sound-card" href="#/coach/sound/${s.id}">
+        <span class="sc-ico">${s.icon}</span><b>${esc(s.name)}</b><small>${esc(s.short)}</small>
+        ${m == null ? '<span class="sc-new">Nuevo</span>' : `<div class="unit-bar" style="--c:${m >= 80 ? '#58cc02' : m >= 55 ? '#ff9600' : '#ff4b4b'}"><div style="width:${m}%"></div></div><span class="small muted">${m}%</span>`}</a>`;
+    };
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <div class="page-head"><a href="#/practice" class="back">←</a><h2>🎙️ Entrenador de pronunciación</h2></div>
+        <div class="card hero-card coach-hero">
+          <div class="row gap"><div class="ring" style="--p:${ov || 0}"><span>${ov == null ? '–' : ov}</span></div>
+            <div class="grow"><b>${ov == null ? 'Empieza con el diagnóstico' : ov >= 80 ? '¡Pronunciación sólida!' : ov >= 55 ? 'Vas mejorando' : 'Vamos paso a paso'}</b>
+            <div class="small muted">${seen}/${Pn.SOUNDS.length} sonidos practicados · ${Pn.practicedWords(u)} palabras</div></div></div>
+        </div>
+        <div class="stack">
+          <a class="btn" href="#/coach/play/daily/mix">⚡ Práctica de 3 minutos</a>
+          <div class="row gap">
+            <a class="btn secondary" href="#/coach/play/diag/mix">🧪 Diagnóstico</a>
+            <a class="btn secondary" href="#/coach/twisters">🗣️ Trabalenguas</a>
+          </div>
+          ${weakW ? `<a class="btn small secondary" href="#/coach/play/hard/mix">❌ Repasar mis palabras difíciles (${weakW})</a>` : ''}
+        </div>
+        <h3>Mapa de sonidos</h3>
+        <p class="small muted">Toca un sonido para aprender cómo se hace y practicarlo. El color indica qué tan dominado lo tienes.</p>
+        <div class="sound-grid">${Pn.SOUNDS.map(card).join('')}</div>
+        <div class="card small"><b>¿Cómo funciona?</b><br>Tú hablas y el reconocimiento de voz de tu teléfono intenta entenderte. Si entiende tu palabra, un hablante nativo también te entendería. Si entiende <i>otra</i> palabra (por ejemplo "sink" en vez de "think"), te explico qué sonido cambió y cómo corregirlo. Funciona mejor en un lugar tranquilo, con el micrófono cerca.</div>
+        <a class="btn ghost" href="#/voicelab">🎤 Laboratorio libre: practica cualquier frase</a>
+      </main>
+      ${tabbar('practice')}`;
+  };
+
+  function coachSound(id) {
+    const s = Pn.byId.get(id);
+    if (!s) return go('/coach');
+    const u = St.user();
+    const m = Pn.mastery(u, id);
+    const tw = (Pn.store(u).twisters || {})[id];
+    app.innerHTML = `
+      <div class="screen page">
+        <div class="page-head"><a href="#/coach" class="back">←</a><h2>${s.icon} ${esc(s.name)} <small class="muted">${esc(s.ipa)}</small></h2></div>
+        <div class="card"><b>⚠️ Por qué cuesta trabajo</b><p>${esc(s.error)}</p></div>
+        <div class="card"><b>👄 Cómo se hace</b><ol class="coach-steps">${s.how.map((h) => `<li>${esc(h)}</li>`).join('')}</ol></div>
+        <h4>Escucha y repite</h4>
+        <div class="chips-row">${s.words.map((w) => `<button class="chip-s" data-say="${esc(w[0])}">🔊 ${esc(w[0])}</button>`).join('')}</div>
+        ${s.pairs.length ? `<h4>Pares que se confunden</h4><p class="small muted">Toca cada palabra: debes oír la diferencia.</p>
+          <div class="pairs">${s.pairs.map((p) => `<div class="pair"><button class="chip-s" data-say="${esc(p[0])}">🔊 ${esc(p[0])}</button><span>≠</span><button class="chip-s" data-say="${esc(p[1])}">🔊 ${esc(p[1])}</button></div>`).join('')}</div>` : ''}
+        <h4>Practicar ${m != null ? `<span class="muted small">· dominio ${m}%</span>` : ''}</h4>
+        <div class="stack">
+          <a class="btn" href="#/coach/play/${s.id}/mix">🎲 Práctica mixta</a>
+          ${s.pairs.length ? `<a class="btn secondary" href="#/coach/play/${s.id}/listen">👂 Distinguir sonidos (escuchar y elegir)</a>` : ''}
+          <a class="btn secondary" href="#/coach/play/${s.id}/words">🎤 Pronunciar palabras</a>
+          <a class="btn secondary" href="#/coach/play/${s.id}/sentences">💬 Frases y trabalenguas${tw ? ` · récord ${tw}` : ''}</a>
+        </div>
+      </div>`;
+    Ex.bindSpeakers(app);
+  }
+
+  function coachTwisters() {
+    const u = St.user(), best = Pn.store(u).twisters || {};
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <div class="page-head"><a href="#/coach" class="back">←</a><h2>🗣️ Trabalenguas</h2></div>
+        <p class="muted">Dilos despacio y claro primero; la velocidad viene después. Cada uno entrena un sonido.</p>
+        <div class="skill-list">${Pn.SOUNDS.map((s) => `
+          <a class="skill-row" href="#/coach/play/${s.id}/twister"><span class="big-emoji">${s.icon}</span><div class="grow"><b>${esc(s.twister[0])}</b><div class="small muted">${esc(s.name)} · ${esc(s.twister[1])}</div></div><span class="${best[s.id] >= 80 ? 'win-t' : 'muted'}">${best[s.id] != null ? best[s.id] : '›'}</span></a>`).join('')}</div>
+      </main>
+      ${tabbar('practice')}`;
+  }
+
+  function coachPlay(target, mode) {
+    const u = St.user();
+    let ex;
+    if (target === 'daily') ex = Pn.dailySession(u);
+    else if (target === 'diag') ex = Pn.diagnosticSession();
+    else if (target === 'hard') ex = Pn.hardWordsSession(u);
+    else ex = Pn.buildSession(target, mode || 'mix');
+    if (!ex.length) { toast('No hay ejercicios de ese tipo.'); return go('/coach'); }
+    const results = [];
+    let finished = false;
+    leaveGuard = () => finished || confirm('¿Salir del entrenador?');
+    const before = Pn.overall(u);
+    Ex.run(app, {
+      mode: 'practice', exercises: ex, settings: u.settings, hooks: coachHooks(u, results),
+      onExit: () => { finished = true; go('/coach'); },
+      onComplete: (r) => {
+        finished = true; leaveGuard = null;
+        const spoken = results.filter((x) => !x.skipped);
+        const avg = spoken.length ? Math.round(spoken.reduce((a, x) => a + x.score, 0) / spoken.length) : 0;
+        const xp = 6 + Math.round(r.score / 10) + (target === 'diag' ? 10 : 0);
+        let got = [];
+        St.update((x) => { St.addXP(x, xp); x.progress.minutesByDay[St.today()] = (x.progress.minutesByDay[St.today()] || 0) + r.minutes; got = St.checkAchievements(x); });
+        Sp.beep('done');
+        const u2 = St.user();
+        const after = Pn.overall(u2);
+        const bySound = {};
+        results.forEach((x) => { const b = (bySound[x.sound] = bySound[x.sound] || { ok: 0, n: 0 }); b.n++; if (x.ok) b.ok++; });
+        const worst = Object.entries(bySound).map(([id, v]) => ({ id, rate: v.ok / v.n })).sort((a, b) => a.rate - b.rate)[0];
+        const uniq = [...new Map(results.map((x) => [x.text, x])).values()];
+        app.innerHTML = `
+          <div class="screen page result">
+            <div class="center-text"><div class="mascot bounce">🎙️</div><h2>${target === 'diag' ? '¡Diagnóstico completo!' : '¡Sesión de pronunciación terminada!'}</h2></div>
+            <div class="grid3 result-stats wide"><div class="rs xp"><small>XP</small><b>+${xp}</b></div><div class="rs acc"><small>Claridad</small><b>${avg}</b></div><div class="rs time"><small>Dominio</small><b>${after == null ? '–' : after}%</b></div></div>
+            ${before != null && after != null && after !== before ? `<p class="center-text">${after > before ? '📈 Tu dominio subió' : '📉 Tu dominio bajó'} de ${before}% a ${after}%.</p>` : ''}
+            ${worst && worst.rate < 1 ? `<div class="card"><b>🎯 Lo que más conviene practicar</b><p>${Pn.byId.get(worst.id).icon} <b>${esc(Pn.byId.get(worst.id).name)}</b> — ${esc(Pn.byId.get(worst.id).how[0])}</p><a class="btn small" href="#/coach/sound/${worst.id}">Estudiar este sonido</a></div>` : '<p class="center-text">🌟 ¡Pronunciaste todo con claridad!</p>'}
+            <div class="card"><h4>Palabras de esta sesión</h4>${uniq.map((x) => `<button class="verb-row" data-say="${esc(x.text)}"><span class="${x.ok ? 'w-ok' : 'w-bad'}">${x.ok ? '✓' : '✗'}</span><b>${esc(x.text)}</b><span>${x.skipped ? 'omitida' : x.score}</span></button>`).join('')}<p class="small muted">Las que fallaste volverán en tus próximas prácticas.</p></div>
+            <div class="stack"><a class="btn" href="#/coach/play/${target}/${mode || 'mix'}">🔁 Otra ronda</a><a class="btn secondary" href="#/coach">Volver al entrenador</a></div>
+          </div>`;
+        Ex.bindSpeakers(app);
+        announceAchievements(got);
+      }
     });
   }
 

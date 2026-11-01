@@ -249,6 +249,8 @@ window.Store = (function () {
     tryU('chat', ctx.chat);
     tryU('review', ctx.review);
     tryU('verbs50', Object.values(p.verbs || {}).filter((v) => v.box >= 4).length >= 50);
+    tryU('pron50', Object.values((p.pron || {}).words || {}).filter((w) => w.ok >= 1).length >= 50);
+    tryU('twister', Object.values((p.pron || {}).twisters || {}).some((v) => v >= 80));
     tryU('social', Object.keys(u.friends || {}).length >= 1 || (u.cloudFriends || 0) > 0);
     return got;
   }

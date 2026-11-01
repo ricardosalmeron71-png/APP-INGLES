@@ -290,6 +290,91 @@ window.Exercises = (function () {
     };
   };
 
+  /* ---- Entrenador de pronunciación: escucha, califica, explica el error y deja reintentar ---- */
+  R.coach = (ex, el, ctx) => {
+    const P = window.Pron;
+    const sttOK = S.canListen();
+    const snd = P.byId.get(ex.sound) || null;
+    const isWord = ex.kind === 'word';
+    const maxTries = ex.maxTries || 3;
+    let tries = 0, best = null, recording = false;
+    el.innerHTML = `
+      <div class="ex-title">${esc(ex.question)}</div>
+      ${snd ? `<div class="coach-sound"><span>${snd.icon}</span><b>${esc(snd.name)}</b><small>${esc(snd.ipa)}</small></div>` : ''}
+      <div class="speak-card">
+        <div class="speak-text ${isWord ? 'big-word' : ''}">${esc(ex.text)}</div>
+        <div class="speak-es">${esc(ex.translation || '')}</div>
+        ${speakerBtns(ex.text)}
+        ${snd ? '<button class="link-btn how-btn">👄 ¿Cómo se hace este sonido?</button><ol class="how hidden">' + snd.how.map((h) => `<li>${esc(h)}</li>`).join('') + '</ol>' : ''}
+      </div>
+      <div class="mic-zone">
+        <button class="mic-btn" aria-label="Hablar">🎤</button>
+        <div class="mic-label">${sttOK ? 'Toca el micrófono y repite' : 'Tu navegador no analiza la voz: escucha y repite en voz alta'}</div>
+        <div class="interim"></div><div class="tries small muted"></div>
+      </div>
+      <div class="speak-result"></div>`;
+    bindSpeakers(el);
+    const mic = el.querySelector('.mic-btn'), label = el.querySelector('.mic-label'), out = el.querySelector('.speak-result'), interim = el.querySelector('.interim'), triesEl = el.querySelector('.tries');
+    const how = el.querySelector('.how');
+    const howBtn = el.querySelector('.how-btn');
+    if (howBtn) howBtn.addEventListener('click', () => how.classList.toggle('hidden'));
+    setTimeout(() => S.speak(ex.text), 350);
+
+    const show = (an) => {
+      tries++;
+      if (!best || an.score > best.score) best = an;
+      const cls = an.cls;
+      const wordsHtml = an.words ? `<div class="align">${an.words.map((w) => `<span class="${w.ok ? 'w-ok' : 'w-bad'}">${esc(w.word)}</span>`).join(' ')}</div>` : '';
+      const stepsHtml = !an.ok && an.steps && an.steps.length ? `<ol class="coach-steps">${an.steps.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>` : (an.ok && an.steps && an.steps.length ? `<div class="pron-tip">💡 ${esc(an.steps[0])}</div>` : '');
+      const tipsHtml = (an.tips || []).map((t) => `<div class="pron-tip">${t.icon} <b>${esc(t.name)}</b> — falló en <b>${t.words.map(esc).join(', ')}</b>.<br>${esc(t.text)}</div>`).join('');
+      const weak = an.missed ? [...new Set(an.missed.map((m) => m.word))].slice(0, 5) : [];
+      const left = maxTries - tries;
+      out.innerHTML = `
+        <div class="pron-result ${cls} pop">
+          <div class="pron-score"><div class="ring" style="--p:${an.score}"><span>${an.score}</span></div>
+            <div><b>${an.emoji} ${esc(an.label)}</b><div class="small muted">Escuché: "${esc(an.heard || '—')}"</div></div></div>
+          ${wordsHtml}
+          ${an.tip ? `<div class="pron-tip">${esc(an.tip)}</div>` : ''}
+          ${stepsHtml}${tipsHtml}
+          ${weak.length ? `<div class="small muted">Toca para escuchar y practicar:</div><div class="chips-row">${weak.map((w) => `<button class="chip-s" data-say="${esc(w)}">🔊 ${esc(w)}</button>`).join('')}</div>` : ''}
+          ${!an.ok && left > 0 ? `<div class="small"><b>Intenta de nuevo</b> (te quedan ${left} ${left === 1 ? 'intento' : 'intentos'}): escucha el modelo 🔊 y repite despacio.</div>` : ''}
+        </div>`;
+      bindSpeakers(out);
+      setTimeout(() => out.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+      triesEl.textContent = `Intento ${Math.min(tries, maxTries)} de ${maxTries}`;
+      ctx.onSpeak && ctx.onSpeak(an.score);
+      if (an.ok || tries >= maxTries) ctx.setReady(true);
+    };
+    const analyze = (r) => (isWord ? P.analyzeWord(ex.text, r.alternatives, r.confidence, ex.sound) : P.analyzeSentence(ex.text, r.alternatives, r.confidence));
+
+    mic.addEventListener('click', async () => {
+      if (!sttOK) {
+        out.innerHTML = `<div class="pron-result mid pop"><b>Compárate con el modelo</b><div class="small muted">Tu navegador no permite análisis automático. ¿Cómo te salió?</div>
+          <div class="row gap"><button class="btn small" id="c-ok">👍 Bien</button><button class="btn small danger" id="c-bad">👎 Practicar más</button></div></div>`;
+        out.querySelector('#c-ok').addEventListener('click', () => { best = { score: 80, ok: true, self: true, tagged: [] }; tries = maxTries; ctx.setReady(true); ctx.submit(); });
+        out.querySelector('#c-bad').addEventListener('click', () => { best = { score: 40, ok: false, self: true, tagged: [] }; tries = maxTries; ctx.setReady(true); ctx.submit(); });
+        return;
+      }
+      if (recording) { S.stopListening(); return; }
+      recording = true; mic.classList.add('recording'); label.textContent = 'Escuchando... habla ahora'; interim.textContent = '';
+      try {
+        const r = await S.listen({ onInterim: (t) => { interim.textContent = t; } });
+        show(analyze(r));
+      } catch (e) {
+        const msg = { 'not-allowed': 'Permite el acceso al micrófono en tu navegador.', 'no-speech': 'No te escuché. Acércate al micrófono e inténtalo otra vez.', 'network': 'El reconocimiento de voz necesita conexión a internet.' }[e.message] || 'No se pudo usar el micrófono. Inténtalo de nuevo.';
+        out.innerHTML = `<div class="note warn">${msg}</div>`;
+      }
+      recording = false; mic.classList.remove('recording'); label.textContent = tries ? 'Toca para intentar otra vez' : 'Toca el micrófono y repite';
+    });
+    ctx.setReady(false);
+    return () => {
+      const b = best || { score: 0, ok: false, tagged: [], tip: '' };
+      ctx.onCoach && ctx.onCoach(ex, { ok: b.ok, score: b.score, analysis: b, tries });
+      const explain = b.ok ? (b.self ? '' : `Puntuación: ${b.score}/100`) : (b.tip || 'Escucha el modelo y repítelo despacio.');
+      return { correct: b.ok, answer: ex.text, explain, speakAnswer: ex.text, score: b.score };
+    };
+  };
+
   R.free_write = (ex, el, ctx) => {
     el.innerHTML = `
       <div class="ex-title">✍️ ${esc(ex.question)}</div>
@@ -379,6 +464,7 @@ window.Exercises = (function () {
         idx++; next();
       },
       onSpeak: opts.hooks && opts.hooks.onSpeak,
+      onCoach: opts.hooks && opts.hooks.onCoach,
       onWrite: opts.hooks && opts.hooks.onWrite
     };
 
@@ -414,7 +500,7 @@ window.Exercises = (function () {
       }
       if (mode === 'test') { idx++; return next(); }
       // Qué decir en voz alta al mostrar el resultado (correcto o incorrecto)
-      const englishAnswer = ['fill', 'translate', 'listen_type', 'listen_choice', 'picture', 'read', 'speak'].includes(ex.type) || ex.audio || ex.speakOptions;
+      const englishAnswer = ['fill', 'translate', 'listen_type', 'listen_choice', 'picture', 'read', 'speak', 'coach'].includes(ex.type) || ex.audio || ex.speakOptions;
       const autoSay = ex.sayAfter || (englishAnswer ? r.speakAnswer : null);
       if (r.speakAnswer == null && ex.sayAfter) r.speakAnswer = ex.sayAfter;
       if (autoSay && (!opts.settings || opts.settings.autoSay !== false)) setTimeout(() => { if (queue[idx] === ex) S.speak(autoSay); }, 450);
@@ -442,7 +528,10 @@ window.Exercises = (function () {
 
     checkBtn.addEventListener('click', () => ctx.submit());
     skipBtn.addEventListener('click', () => { if (!checking) showFeedback({ ...(evaluate ? safeEval() : {}), correct: false }); });
-    function safeEval() { if (['speak', 'free_write', 'match'].includes(queue[idx].type)) return {}; try { const r = evaluate(); return { answer: r.answer, explain: r.explain, speakAnswer: r.speakAnswer }; } catch (e) { return {}; } }
+    function safeEval() {
+      const q = queue[idx];
+      if (q.type === 'coach') { opts.hooks && opts.hooks.onCoach && opts.hooks.onCoach(q, { ok: false, score: 0, analysis: { tagged: [] }, tries: 0, skipped: true }); return { answer: q.text, speakAnswer: q.text, explain: 'Escucha el modelo y repítelo despacio. Volverá a aparecer para practicarlo.' }; }
+      if (['speak', 'free_write', 'match'].includes(q.type)) return {}; try { const r = evaluate(); return { answer: r.answer, explain: r.explain, speakAnswer: r.speakAnswer }; } catch (e) { return {}; } }
 
     function complete() {
       bar.style.width = '100%';
