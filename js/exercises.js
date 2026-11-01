@@ -152,7 +152,9 @@ window.Exercises = (function () {
     }
     return () => {
       const r = A.checkAnswer(getText(), ex.answers);
-      return { correct: r.ok, typo: r.typo, answer: r.best, given: getText(), explain: ex.explain, speakAnswer: r.best };
+      // En modo estricto (verbos) la ortografía debe ser exacta
+      const ok = r.ok && !(ex.strict && r.typo);
+      return { correct: ok, typo: ok && r.typo, answer: r.best, given: getText(), explain: ex.explain, speakAnswer: r.best };
     };
   };
 
@@ -170,7 +172,8 @@ window.Exercises = (function () {
       const r = A.checkAnswer(ta.value, ex.answers);
       const al = A.alignWords(ex.audio, ta.value);
       const html = r.ok ? '' : `<div class="align">${al.words.map((w) => `<span class="${w.ok ? 'w-ok' : 'w-bad'}">${esc(w.word)}</span>`).join(' ')}</div>`;
-      return { correct: r.ok, typo: r.typo, answer: ex.audio, explain: ex.translation, html, speakAnswer: ex.audio };
+      const ok = r.ok && !(ex.strict && r.typo);
+      return { correct: ok, typo: ok && r.typo, answer: ex.shown || ex.audio, explain: ex.translation, html: ok ? '' : html, speakAnswer: ex.audio };
     };
   };
 

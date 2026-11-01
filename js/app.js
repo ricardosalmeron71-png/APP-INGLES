@@ -472,6 +472,7 @@
         </div>
         <div class="quick">
           <a href="#/plan" class="quick-item">🗺️<small>Mi plan</small></a>
+          <a href="#/verbs" class="quick-item">🔤<small>Verbos${Vb.dueVerbs(u).length ? ` <b class="badge">${Vb.dueVerbs(u).length}</b>` : ''}</small></a>
           <a href="#/flashcards" class="quick-item">🃏<small>Tarjetas${dueW ? ` <b class="badge">${dueW}</b>` : ''}</small></a>
           <a href="#/mistakes" class="quick-item">🧠<small>Errores${mist ? ` <b class="badge">${mist}</b>` : ''}</small></a>
           <a href="#/community" class="quick-item">🏆<small>Ranking</small></a>
@@ -628,6 +629,7 @@
           <a class="practice-card" href="#/flashcards" style="--c:#1cb0f6"><span>🃏</span><b>Tarjetas</b><small>${dueW} para hoy · ${Object.keys(u.progress.words).length} palabras</small></a>
           <a class="practice-card" href="#/voicelab" style="--c:#ff9600"><span>🎤</span><b>Laboratorio de voz</b><small>Pronunciación con análisis</small></a>
           <a class="practice-card" href="#/writelab" style="--c:#ce82ff"><span>✍️</span><b>Laboratorio de escritura</b><small>Corrección detallada</small></a>
+          <a class="practice-card" href="#/verbs" style="--c:#ff9600"><span>🔤</span><b>Verbos</b><small>Regulares e irregulares: juegos, repaso y consulta</small></a>
           <a class="practice-card" href="#/tutor" style="--c:#58cc02"><span>🤖</span><b>Tutor con IA</b><small>Conversación real por voz con correcciones</small></a>
           <a class="practice-card" href="#/chat" style="--c:#2bb673"><span>💬</span><b>Diálogos guiados</b><small>Situaciones con opciones · sin internet</small></a>
           <a class="practice-card" href="#/grammar" style="--c:#2b70c9"><span>📘</span><b>Guía gramatical</b><small>Todas las reglas</small></a>
@@ -689,6 +691,263 @@
       ctx: { review: true }
     });
   };
+
+  /* ------------------ VERBOS: centro, consulta, juegos y contrarreloj ------------------ */
+  const Vb = window.Verbs;
+  const verbHooks = (u) => {
+    const base = lessonHooks(u);
+    return {
+      ...base,
+      onResult: (ex, ok, retry) => {
+        base.onResult(ex, ok, retry);
+        if (ex.verb && !retry) St.update((x) => Vb.record(x, ex.verb, ok));
+      }
+    };
+  };
+
+  routes.verbs = (sub, a, b) => {
+    if (sub === 'ref') return verbsRef();
+    if (sub === 'play') return verbsPlay(a, b);
+    if (sub === 'time') return verbsTime(a);
+    const u = St.user();
+    const irr = Vb.stats(u, Vb.list.filter((v) => v.irregular));
+    const reg = Vb.stats(u, Vb.list.filter((v) => !v.irregular));
+    const due = Vb.dueVerbs(u).length, hard = Vb.hardVerbs(u).length;
+    const best = (u.progress.verbBest || 0);
+    const groupCard = (g) => {
+      const vs = Vb.groupVerbs(g.id), st = Vb.stats(u, vs);
+      return `<button class="skill-row vgroup" data-g="${g.id}"><span class="big-emoji">${g.icon}</span><div class="grow"><b>${g.name}</b><div class="small muted">${g.desc} · ${vs.length} verbos</div>
+        <div class="unit-bar"><div style="width:${Math.round(100 * st.mastered / vs.length)}%"></div></div></div><span class="muted small">${st.mastered}/${vs.length}</span></button>`;
+    };
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <div class="page-head"><a href="#/practice" class="back">←</a><h2>🔤 Verbos</h2></div>
+        <div class="grid2 vstats">
+          <div class="stat"><span>⚡</span><b>${irr.mastered}/${irr.total}</b><small>Irregulares dominados</small></div>
+          <div class="stat"><span>✅</span><b>${reg.mastered}/${reg.total}</b><small>Regulares dominados</small></div>
+        </div>
+        <div class="stack">
+          <button class="btn" id="review">🧠 Repaso del día ${due ? `(${due})` : ''}</button>
+          <div class="row gap">
+            <a class="btn secondary" href="#/verbs/time/basic">⏱️ Contrarreloj${best ? ` · récord ${best}` : ''}</a>
+            <a class="btn secondary" href="#/verbs/ref">📖 Consultar</a>
+          </div>
+          ${hard ? `<button class="btn small secondary" id="hard">❌ Practicar mis verbos difíciles (${hard})</button>` : ''}
+        </div>
+        <h3>Practicar por grupo</h3>
+        <div class="skill-list">${Vb.GROUPS.filter((g) => !['aaa', 'abb', 'aba', 'abc'].includes(g.id)).map(groupCard).join('')}</div>
+        <h3>Irregulares por patrón</h3>
+        <p class="small muted">Aprenderlos por grupos que se parecen hace más fácil memorizarlos.</p>
+        <div class="skill-list">${Vb.GROUPS.filter((g) => ['aaa', 'abb', 'aba', 'abc'].includes(g.id)).map(groupCard).join('')}</div>
+        <div class="card"><h4>💡 Reglas de los verbos regulares</h4>
+          <p><b>Pasado y participio:</b> se agrega <b>-ed</b> (work → worked).</p>
+          <ul class="tips">
+            <li>Termina en <b>-e</b>: solo <b>-d</b> → live → lived</li>
+            <li>Consonante + <b>y</b>: <b>-ied</b> → study → studied (pero play → played)</li>
+            <li>Consonante-vocal-consonante corta: se <b>duplica</b> → stop → stopped, plan → planned</li>
+          </ul>
+          <p><b>Pronunciación de -ed:</b></p>
+          <ul class="tips">
+            <li><b>/ɪd/</b> (sílaba extra) después de t / d → wanted, needed</li>
+            <li><b>/t/</b> después de p, k, f, s, sh, ch, x → worked, stopped, watched</li>
+            <li><b>/d/</b> en los demás casos → played, called, lived</li>
+          </ul>
+          <p><b>Gerundio (-ing):</b> make → making (quita la -e), lie → lying, run → running, see → seeing.</p>
+        </div>
+      </main>
+      ${tabbar('practice')}`;
+    $$('[data-g]').forEach((b) => b.addEventListener('click', () => verbModeModal(b.dataset.g)));
+    $('#review').addEventListener('click', () => go('/verbs/play/review/mix'));
+    const h = $('#hard'); if (h) h.addEventListener('click', () => go('/verbs/play/hard/mix'));
+  };
+
+  function verbModeModal(gid) {
+    const g = Vb.GROUPS.find((x) => x.id === gid);
+    modal(`
+      <div class="center-text"><div class="big-emoji">${g.icon}</div><h3>${g.name}</h3><p class="muted small">${g.desc}</p></div>
+      <div class="stack">
+        <a class="btn" href="#/verbs/play/${gid}/mix">🎲 Mixto (elegir, escribir, escuchar y hablar)</a>
+        <a class="btn secondary" href="#/verbs/play/${gid}/write">✍️ Escrito</a>
+        <a class="btn secondary" href="#/verbs/play/${gid}/oral">🎤 Oral y pronunciación</a>
+        <a class="btn secondary" href="#/verbs/time/${gid}">⏱️ Contrarreloj (60 segundos)</a>
+        <button class="btn ghost" data-close>Cancelar</button>
+      </div>`, (m, close) => $$('a', m).forEach((a) => a.addEventListener('click', close)));
+  }
+
+  function verbsPlay(gid, mode) {
+    const u = St.user();
+    let verbs;
+    if (gid === 'review') {
+      verbs = Vb.dueVerbs(u).slice(0, 10);
+      if (verbs.length < 6) verbs = [...verbs, ...Vb.pickForSession(u, Vb.groupVerbs('basic'), 10 - verbs.length).filter((v) => !verbs.includes(v))];
+    } else if (gid === 'hard') verbs = Vb.hardVerbs(u).slice(0, 10);
+    else verbs = Vb.pickForSession(u, Vb.groupVerbs(gid), 10);
+    if (!verbs.length) return go('/verbs');
+    let ex = Vb.buildSession(verbs, ['mix', 'write', 'oral'].includes(mode) ? mode : 'mix');
+    if (speakingDisabled(u) && mode !== 'oral') ex = ex.filter((e) => e.type !== 'speak');
+    let finished = false;
+    leaveGuard = () => finished || confirm('¿Salir de la práctica de verbos?');
+    Ex.run(app, {
+      mode: 'practice', exercises: ex, settings: u.settings, hooks: verbHooks(u),
+      onExit: () => { finished = true; go('/verbs'); },
+      onComplete: (r) => {
+        finished = true; leaveGuard = null;
+        const xp = 8 + Math.round(r.score / 8);
+        let got = [];
+        St.update((x) => { St.addXP(x, xp); x.progress.minutesByDay[St.today()] = (x.progress.minutesByDay[St.today()] || 0) + r.minutes; got = St.checkAchievements(x); });
+        Sp.beep('done');
+        const p = St.user().progress.verbs || {};
+        app.innerHTML = `
+          <div class="screen page result">
+            <div class="center-text"><div class="mascot bounce">🦉</div><h2>¡Práctica de verbos terminada!</h2></div>
+            <div class="grid3 result-stats wide"><div class="rs xp"><small>XP</small><b>+${xp}</b></div><div class="rs acc"><small>Precisión</small><b>${r.score}%</b></div><div class="rs time"><small>Tiempo</small><b>${Math.max(1, Math.round(r.minutes))} min</b></div></div>
+            <div class="card"><h4>Verbos de esta sesión</h4>${verbs.map((v) => {
+              const box = (p[v.base] || {}).box || 0;
+              return `<button class="verb-row" data-v="${v.base}"><span class="vdots">${'●'.repeat(Math.min(box, 6))}${'○'.repeat(Math.max(0, 6 - box))}</span><b>${v.base}</b> <span>${v.past.join('/')} · ${v.pp.join('/')}</span></button>`;
+            }).join('')}<p class="small muted">● = nivel de memoria. Con 4 o más el verbo cuenta como dominado; volverá a aparecer en tus repasos para no olvidarlo.</p></div>
+            <div class="stack"><a class="btn" href="#/verbs/play/${gid}/${mode}">🔁 Otra ronda</a><a class="btn secondary" href="#/verbs">Volver a verbos</a></div>
+          </div>`;
+        $$('[data-v]').forEach((b) => b.addEventListener('click', () => verbDetail(b.dataset.v)));
+        announceAchievements(got);
+      }
+    });
+  }
+
+  function verbsTime(gid) {
+    const u = St.user();
+    const verbs = (gid === 'hard' ? Vb.hardVerbs(u) : Vb.groupVerbs(gid || 'basic'));
+    const pool = verbs.length >= 4 ? verbs : Vb.groupVerbs('basic');
+    let score = 0, combo = 0, time = 60, q = null, timer = null, over = false;
+    const misses = [];
+    leaveGuard = () => over || confirm('¿Salir del contrarreloj?');
+    app.innerHTML = `
+      <div class="screen timegame">
+        <div class="row between tg-top"><a href="#/verbs" class="back">✕</a><b class="tg-score">⭐ <span id="sc">0</span></b><b class="tg-combo" id="cb"></b></div>
+        <div class="tg-bar"><div id="tb"></div></div>
+        <div class="tg-q" id="q"></div>
+        <div class="tg-opts" id="o"></div>
+        <p class="small muted center-text">Responde todas las que puedas en 60 segundos. ¡Cada acierto suma +1 segundo!</p>
+      </div>`;
+    const next = () => {
+      q = Vb.quickQuestion(pool);
+      const m = q.question.match(/^(.*) de "(.*)" \((.*)\)$/);
+      $('#q').innerHTML = `<div class="tg-verb">${esc(m[2])}</div><div class="tg-form">${esc(m[1])}</div><div class="small muted">${esc(m[3])}</div>`;
+      $('#o').innerHTML = q.options.map((o, i) => `<button class="option tg-opt" data-i="${i}">${esc(o)}</button>`).join('');
+      $$('.tg-opt').forEach((b) => b.addEventListener('click', () => answer(+b.dataset.i, b)));
+    };
+    const answer = (i, btn) => {
+      if (over) return;
+      const ok = i === q.answer;
+      St.update((x) => Vb.record(x, q.verb, ok));
+      if (ok) { combo++; score += combo >= 5 ? 2 : 1; time = Math.min(60, time + 1); Sp.beep('ok'); btn.classList.add('good'); }
+      else { combo = 0; Sp.beep('bad'); btn.classList.add('wrong'); $$('.tg-opt')[q.answer].classList.add('good'); misses.push(q); }
+      $('#sc').textContent = score; $('#cb').textContent = combo >= 3 ? `🔥 x${combo >= 5 ? 2 : 1} · ${combo}` : '';
+      setTimeout(() => { if (!over) next(); }, ok ? 250 : 900);
+    };
+    const tick = () => {
+      if (!$('#tb')) { clearInterval(timer); return; }
+      time -= 0.1;
+      $('#tb').style.width = `${Math.max(0, time / 60 * 100)}%`;
+      $('#tb').classList.toggle('low', time < 10);
+      if (time <= 0) end();
+    };
+    const end = () => {
+      over = true; leaveGuard = null; clearInterval(timer);
+      const prev = u.progress.verbBest || 0;
+      const record = score > prev;
+      let got = [];
+      St.update((x) => { St.addXP(x, Math.min(50, score)); if (record) x.progress.verbBest = score; got = St.checkAchievements(x); });
+      Sp.beep('done'); if (record && score > 0) confetti();
+      const uniq = [...new Map(misses.map((m) => [m.verb, m])).values()];
+      app.innerHTML = `
+        <div class="screen page result">
+          <div class="center-text"><div class="mascot bounce">⏱️</div><h2>${record && score > 0 ? '¡Nuevo récord! 🏆' : '¡Tiempo!'}</h2>
+          <div class="tg-final">${score}</div><p class="muted">puntos · récord: ${Math.max(prev, score)} · +${Math.min(50, score)} XP</p></div>
+          ${uniq.length ? `<div class="card"><h4>Para repasar</h4>${uniq.map((m) => { const v = Vb.byBase.get(m.verb); return `<button class="verb-row" data-v="${v.base}"><b>${v.base}</b> <span>${Vb.allForms(v)}</span> <span class="muted">${esc(v.es)}</span></button>`; }).join('')}</div>` : ''}
+          <div class="stack"><a class="btn" href="#/verbs/time/${gid || 'basic'}">🔁 Jugar otra vez</a><a class="btn secondary" href="#/verbs">Volver a verbos</a></div>
+        </div>`;
+      $$('[data-v]').forEach((b) => b.addEventListener('click', () => verbDetail(b.dataset.v)));
+      announceAchievements(got);
+    };
+    next();
+    timer = setInterval(tick, 100);
+  }
+
+  let refFilter = 'all', refQuery = '';
+  function verbsRef() {
+    const u = St.user();
+    const prog = u.progress.verbs || {};
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <div class="page-head"><a href="#/verbs" class="back">←</a><h2>📖 Consulta de verbos</h2></div>
+        <input id="vq" placeholder="🔍 Busca en inglés o español (ej. went, comer, write)" value="${esc(refQuery)}" autocomplete="off" autocapitalize="off">
+        <div class="seg">${[['all', 'Todos'], ['irr', 'Irregulares'], ['reg', 'Regulares'], ['mastered', '⭐ Dominados'], ['hard', '❌ Difíciles']].map(([k, n]) => `<button data-f="${k}" class="${k === refFilter ? 'on' : ''}">${n}</button>`).join('')}</div>
+        <div class="small muted" id="vcount"></div>
+        <div class="vtable-head"><span>Base</span><span>Pasado</span><span>Participio</span></div>
+        <div id="vlist"></div>
+      </main>
+      ${tabbar('practice')}`;
+    const draw = () => {
+      const res = Vb.search(refQuery, refFilter, prog);
+      const shown = res.slice(0, 120);
+      let extra = '';
+      if (!res.length && /^[a-zA-Z]{2,20}$/.test(refQuery.trim())) {
+        const g = Vb.conjugate(refQuery);
+        extra = `<div class="card small">No está en la lista. Si <b>${esc(g.base)}</b> es un verbo regular, sus formas serían: <b>${esc(Vb.allForms(g))}</b> · 3ª persona: <b>${esc(g.s[0])}</b></div>`;
+      }
+      $('#vcount').textContent = `${res.length} verbo(s)${res.length > 120 ? ' · mostrando 120, escribe para filtrar' : ''}`;
+      $('#vlist').innerHTML = shown.map((v) => {
+        const box = (prog[v.base] || {}).box || 0;
+        return `<button class="vrow ${v.irregular ? 'irr' : ''}" data-v="${v.base}">
+          <span><b>${v.base}</b>${box >= 4 ? ' ⭐' : ''}<small>${esc(v.es)}</small></span><span>${v.past.join(' / ')}</span><span>${v.pp.join(' / ')}</span></button>`;
+      }).join('') + extra;
+      $$('#vlist [data-v]').forEach((b) => b.addEventListener('click', () => verbDetail(b.dataset.v)));
+    };
+    $('#vq').addEventListener('input', (e) => { refQuery = e.target.value; draw(); });
+    $$('[data-f]').forEach((b) => b.addEventListener('click', () => { refFilter = b.dataset.f; $$('[data-f]').forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    draw();
+  }
+
+  function verbDetail(base) {
+    const v = Vb.byBase.get(base);
+    if (!v) return;
+    const u = St.user(), r = (u.progress.verbs || {})[base];
+    const patName = { aaa: 'Las 3 formas iguales', abb: 'Pasado = participio', aba: 'Base = participio', abc: 'Todas distintas' }[v.pat];
+    const edName = { t: '/t/', d: '/d/', id: '/ɪd/ (sílaba extra)' }[v.ed];
+    const row = (label, forms) => `<div class="vform"><small>${label}</small><b>${forms.map(esc).join(' / ')}</b><button class="btn-speaker tiny" data-say="${esc(forms[0])}">🔊</button></div>`;
+    const ctx = [
+      ['Presente', `I ${v.base} · She ${v.s[0]}`], ['Pasado', `Yesterday I ${v.past[0]}`],
+      ['Presente perfecto', `I have ${v.pp[0]}`], ['Continuo', `I am ${v.ing[0]}`]
+    ];
+    modal(`
+      <div class="center-text"><h2 class="vtitle">${esc(v.base)} <button class="btn-speaker small" data-say="${esc(`${v.base}, ${v.past[0]}, ${v.pp[0]}`)}">🔊</button></h2>
+        <div class="muted">${esc(v.es)}</div>
+        <div class="row gap center wrap"><span class="pill" style="--c:${v.irregular ? '#ff9600' : '#58cc02'}">${v.irregular ? 'Irregular' : 'Regular'}</span>
+        ${v.irregular ? `<span class="pill" style="--c:#1cb0f6">${patName}</span>` : `<span class="pill" style="--c:#1cb0f6">-ed suena ${edName}</span>`}
+        <span class="pill" style="--c:#ce82ff">${v.level}</span></div></div>
+      <div class="vforms">${row('Base', [v.base])}${row('3ª persona', v.s)}${row('Pasado', v.past)}${row('Participio', v.pp)}${row('Gerundio', v.ing)}</div>
+      <h4>En contexto</h4>
+      <div class="vocab-list">${ctx.map(([l, t]) => `<button class="vocab-item" data-say="${esc(t)}">🔊 <b>${esc(t)}</b> <span class="muted small">${l}</span></button>`).join('')}</div>
+      ${r ? `<p class="small muted">Tu memoria: ${'●'.repeat(Math.min(r.box, 6))}${'○'.repeat(Math.max(0, 6 - r.box))} · ✔️ ${r.ok} · ✖️ ${r.bad}</p>` : ''}
+      <h4>🎤 Practica la pronunciación</h4>
+      <div id="vspeak"></div>
+      <button class="btn secondary" id="vadd">➕ Agregar a mi repaso de hoy</button>
+      <button class="btn ghost" data-close>Cerrar</button>`, (m) => {
+      Ex.bindSpeakers(m);
+      const holder = $('#vspeak', m);
+      const ctxS = { mode: 'practice', settings: u.settings, setReady() {}, submit() {}, skipSpeaking() {}, sound: () => {}, onSpeak: () => {} };
+      window.ExercisesRenderers.speak({ type: 'speak', question: 'Di las 3 formas', text: `${v.base}, ${v.past[0]}, ${v.pp[0]}`, translation: v.es }, holder, ctxS);
+      const sk = $('.skip-speak', holder); if (sk) sk.remove();
+      const t = $('.ex-title', holder); if (t) t.remove();
+      $('#vadd', m).addEventListener('click', (e) => {
+        St.update((x) => { const p = (x.progress.verbs = x.progress.verbs || {}); p[base] = { ...(p[base] || { box: 1, ok: 0, bad: 0 }), due: St.today() }; });
+        e.target.disabled = true; e.target.textContent = '✅ Agregado al repaso de hoy';
+      });
+    });
+  }
+
 
   /* ------------------ TARJETAS (repetición espaciada) ------------------ */
   routes.flashcards = () => {

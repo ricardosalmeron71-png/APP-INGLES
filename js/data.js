@@ -867,7 +867,8 @@ window.DATA = (function () {
     { id: 'levelup', icon: '🚀', name: 'Subiste de nivel', desc: 'Completa un nivel completo' },
     { id: 'chat', icon: '💬', name: 'Conversador', desc: 'Completa una conversación' },
     { id: 'review', icon: '🧠', name: 'Memoria de acero', desc: 'Repasa tus errores' },
-    { id: 'social', icon: '🤝', name: 'En equipo', desc: 'Agrega a un amigo para comparar progreso' }
+    { id: 'social', icon: '🤝', name: 'En equipo', desc: 'Agrega a un amigo para comparar progreso' },
+    { id: 'verbs50', icon: '🔤', name: 'Maestro de verbos', desc: 'Domina 50 verbos' }
   ];
 
   const GOALS = [

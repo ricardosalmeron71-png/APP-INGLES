@@ -248,6 +248,7 @@ window.Store = (function () {
     tryU('levelup', ctx.levelUp);
     tryU('chat', ctx.chat);
     tryU('review', ctx.review);
+    tryU('verbs50', Object.values(p.verbs || {}).filter((v) => v.box >= 4).length >= 50);
     tryU('social', Object.keys(u.friends || {}).length >= 1 || (u.cloudFriends || 0) > 0);
     return got;
   }
