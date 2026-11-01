@@ -67,7 +67,7 @@ window.Exercises = (function () {
       ${optionsHtml(ex.options)}`;
     bindSpeakers(el);
     if (ex.audio) S.speak(ex.audio);
-    const get = bindOptions(el, ctx);
+    const get = bindOptions(el, ctx, ex.speakOptions ? (i) => S.speak(ex.options[i]) : null);
     return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer], explain: ex.explain, speakAnswer: /[a-z]/i.test(ex.options[ex.answer]) && !ex.audio ? ex.options[ex.answer] : ex.audio });
   };
 
@@ -96,7 +96,7 @@ window.Exercises = (function () {
       <div class="fill-sentence">${esc(parts[0])}<span class="blank">&nbsp;</span>${esc(parts[1] || '')}</div>
       <div class="chips">${ex.options.map((o, i) => `<button class="option chip" data-i="${i}">${esc(o)}</button>`).join('')}</div>`;
     const blank = el.querySelector('.blank');
-    const get = bindOptions(el, ctx, (i) => { blank.textContent = ex.options[i]; blank.classList.add('filled'); });
+    const get = bindOptions(el, ctx, (i) => { blank.textContent = ex.options[i]; blank.classList.add('filled'); S.speak(ex.sentence.replace('___', ex.options[i])); });
     const full = ex.sentence.replace('___', ex.options[ex.answer]);
     return () => ({ correct: get() === ex.answer, answer: full, explain: ex.explain, speakAnswer: full });
   };
@@ -110,8 +110,8 @@ window.Exercises = (function () {
       <div class="ex-title small">${esc(ex.question)}</div>
       ${optionsHtml(ex.options)}`;
     bindSpeakers(el);
-    const get = bindOptions(el, ctx);
-    return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer] });
+    const get = bindOptions(el, ctx, (i) => S.speak(ex.options[i]));
+    return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer], speakAnswer: ex.options[ex.answer] });
   };
 
   function bankUI(ex, el, ctx) {
@@ -189,7 +189,7 @@ window.Exercises = (function () {
     let sel = null, matched = 0, errors = 0;
     el.querySelectorAll('.m').forEach((b) => b.addEventListener('click', () => {
       if (b.classList.contains('done')) return;
-      if (b.dataset.side === 'L') S.speak(b.textContent);
+      if (b.dataset.side === 'L' || ex.speakBoth) S.speak(b.textContent);
       if (!sel || sel.dataset.side === b.dataset.side) {
         el.querySelectorAll(`.m[data-side="${b.dataset.side}"]`).forEach((x) => x.classList.remove('selected'));
         b.classList.add('selected'); sel = b; return;
@@ -392,6 +392,7 @@ window.Exercises = (function () {
       const el = document.createElement('div'); el.className = 'ex slide-in'; body.appendChild(el);
       ctx.setReady(false);
       evaluate = (R[ex.type] || R.choice)(ex, el, ctx);
+      if (ex.say) setTimeout(() => { if (queue[idx] === ex && !checking) S.speak(ex.say); }, 300);
     }
 
     function check() {
@@ -412,6 +413,12 @@ window.Exercises = (function () {
         if (!ex._retry) { queue.push({ ...ex, _retry: true, _id: Math.random() }); wrongList.push(ex); }
       }
       if (mode === 'test') { idx++; return next(); }
+      // Qué decir en voz alta al mostrar el resultado (correcto o incorrecto)
+      const englishAnswer = ['fill', 'translate', 'listen_type', 'listen_choice', 'picture', 'read', 'speak'].includes(ex.type) || ex.audio || ex.speakOptions;
+      const autoSay = ex.sayAfter || (englishAnswer ? r.speakAnswer : null);
+      if (r.speakAnswer == null && ex.sayAfter) r.speakAnswer = ex.sayAfter;
+      if (autoSay && (!opts.settings || opts.settings.autoSay !== false)) setTimeout(() => { if (queue[idx] === ex) S.speak(autoSay); }, 450);
+      if (ex.sayAfter) r.speakAnswer = ex.sayAfter;
       const praise = ['¡Excelente!', '¡Correcto!', '¡Muy bien!', '¡Genial!', '¡Perfecto!', '¡Así se hace!'];
       sheet.className = `sheet show ${r.correct ? 'ok' : 'bad'}`;
       sheet.innerHTML = `

@@ -827,7 +827,7 @@
         <div class="tg-bar"><div id="tb"></div></div>
         <div class="tg-q" id="q"></div>
         <div class="tg-opts" id="o"></div>
-        <p class="small muted center-text">Responde todas las que puedas en 60 segundos. ¡Cada acierto suma +1 segundo!</p>
+        <p class="small muted center-text">Responde todas las que puedas en 60 segundos. ¡Cada acierto suma +2 segundos!</p>
       </div>`;
     const next = () => {
       q = Vb.quickQuestion(pool);
@@ -835,15 +835,19 @@
       $('#q').innerHTML = `<div class="tg-verb">${esc(m[2])}</div><div class="tg-form">${esc(m[1])}</div><div class="small muted">${esc(m[3])}</div>`;
       $('#o').innerHTML = q.options.map((o, i) => `<button class="option tg-opt" data-i="${i}">${esc(o)}</button>`).join('');
       $$('.tg-opt').forEach((b) => b.addEventListener('click', () => answer(+b.dataset.i, b)));
+      Sp.speak(q.say);
     };
     const answer = (i, btn) => {
       if (over) return;
       const ok = i === q.answer;
       St.update((x) => Vb.record(x, q.verb, ok));
-      if (ok) { combo++; score += combo >= 5 ? 2 : 1; time = Math.min(60, time + 1); Sp.beep('ok'); btn.classList.add('good'); }
+      $$('.tg-opt').forEach((b) => { b.disabled = true; });
+      if (ok) { combo++; score += combo >= 5 ? 2 : 1; time = Math.min(60, time + 2); Sp.beep('ok'); btn.classList.add('good'); }
       else { combo = 0; Sp.beep('bad'); btn.classList.add('wrong'); $$('.tg-opt')[q.answer].classList.add('good'); misses.push(q); }
+      // Dice todas las formas del verbo (correcto o incorrecto)
+      Sp.speak(q.sayAfter);
       $('#sc').textContent = score; $('#cb').textContent = combo >= 3 ? `🔥 x${combo >= 5 ? 2 : 1} · ${combo}` : '';
-      setTimeout(() => { if (!over) next(); }, ok ? 250 : 900);
+      setTimeout(() => { if (!over) next(); }, ok ? 1500 : 2300);
     };
     const tick = () => {
       if (!$('#tb')) { clearInterval(timer); return; }
@@ -1761,6 +1765,7 @@
           <label>Velocidad de voz: <b id="rv">${s.rate}</b><input type="range" id="rate" min="0.6" max="1.3" step="0.05" value="${s.rate}"></label>
           <button class="btn small secondary" id="test-voice">🔊 Probar voz</button>
           <label class="toggle"><input type="checkbox" id="sound" ${s.sound !== false ? 'checked' : ''}> Efectos de sonido</label>
+          <label class="toggle"><input type="checkbox" id="autosay" ${s.autoSay !== false ? 'checked' : ''}> Leer en voz alta la respuesta correcta al comprobar</label>
           <div class="small muted">Reconocimiento de voz: ${Sp.canListen() ? '✅ disponible' : '❌ no disponible en este navegador (usa Chrome o Safari)'}</div>
         </div>
         <div class="card" id="cloud-card">
@@ -1802,6 +1807,7 @@
     $('#rate').addEventListener('input', (e) => { $('#rv').textContent = e.target.value; set((x) => { x.settings.rate = +e.target.value; }); });
     $('#test-voice').addEventListener('click', () => Sp.speak('Hello! Welcome to English Up. Let\'s learn together.'));
     $('#sound').addEventListener('change', (e) => set((x) => { x.settings.sound = e.target.checked; }));
+    $('#autosay').addEventListener('change', (e) => set((x) => { x.settings.autoSay = e.target.checked; }));
     $('#dark').addEventListener('change', (e) => set((x) => { x.settings.dark = e.target.checked; }));
     if (Cloud.connected(u)) {
       Cloud.myProfile(u).then((p) => { const el = $('#fc'); if (el && p) el.textContent = p.friend_code; }).catch(() => { const el = $('#fc'); if (el) el.textContent = 'sin conexión'; });

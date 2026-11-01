@@ -173,6 +173,10 @@ window.Verbs = (function () {
   const first = (arr) => arr[0];
   const formsOf = (v, f) => (f === 'base' ? [v.base] : v[f]);
   const allForms = (v) => `${v.base} – ${v.past.join('/')} – ${v.pp.join('/')} – ${v.ing[0]}`;
+  /** Texto para decir en voz alta todas las formas: "go, went, gone, going" */
+  const sayForms = (v) => [v.base, v.past.join(' or '), v.pp.join(' or '), v.ing[0]].join(', ');
+  /** Agrega audio: al iniciar dice el verbo, al elegir dice la opción y al final dice todas las formas */
+  const withAudio = (ex, v, say = v.base) => ({ ...ex, say, sayAfter: sayForms(v), speakOptions: true, speakBoth: true });
 
   function wrongCandidates(v, f) {
     const c = new Set([v.base + 'ed', regularPast(v.base), v.base, v.ing[0], v.past[0], v.pp[0], v.s[0], /e$/.test(v.base) ? null : v.base + 'en', v.irregular ? v.past[0] + 'ed' : null]);
@@ -185,35 +189,35 @@ window.Verbs = (function () {
   function choiceEx(v, f) {
     const correct = first(formsOf(v, f));
     const opts = shuffle([correct, ...wrongCandidates(v, f).slice(0, 3)]);
-    return { type: 'choice', skill: 'grammar', verb: v.base, question: `${FORM_LABELS[f]} de "${v.base}" (${v.es})`, options: opts, answer: opts.indexOf(correct), explain: allForms(v), audio: null };
+    return withAudio({ type: 'choice', skill: 'grammar', verb: v.base, question: `${FORM_LABELS[f]} de "${v.base}" (${v.es})`, options: opts, answer: opts.indexOf(correct), explain: allForms(v), audio: null }, v);
   }
   function writeEx(v, f) {
-    return { type: 'translate', skill: 'writing', verb: v.base, strict: true, question: `Escribe el ${FORM_SHORT[f]}`, source: `${v.base} (${v.es}) → ${FORM_LABELS[f].toLowerCase()}`, answers: formsOf(v, f), explain: allForms(v) };
+    return withAudio({ type: 'translate', skill: 'writing', verb: v.base, strict: true, question: `Escribe el ${FORM_SHORT[f]}`, source: `${v.base} (${v.es}) → ${FORM_LABELS[f].toLowerCase()}`, answers: formsOf(v, f), explain: allForms(v) }, v);
   }
   function threeFormsEx(v) {
     const combos = [];
     v.past.forEach((p) => v.pp.forEach((pp) => combos.push(`${v.base} ${p} ${pp}`)));
-    return { type: 'translate', skill: 'writing', verb: v.base, strict: true, question: 'Escribe las 3 formas (base, pasado, participio)', source: `${v.es}  →  ${v.base} … … `, hint: 'Ejemplo: go went gone', answers: combos, explain: allForms(v) };
+    return withAudio({ type: 'translate', skill: 'writing', verb: v.base, strict: true, question: 'Escribe las 3 formas (base, pasado, participio)', source: `${v.es}  →  ${v.base} … … `, hint: 'Ejemplo: go went gone', answers: combos, explain: allForms(v) }, v);
   }
   function listenEx(v) {
     const text = `${v.base}, ${v.past[0]}, ${v.pp[0]}`;
-    return { type: 'listen_type', skill: 'listening', verb: v.base, strict: true, question: 'Escucha y escribe las 3 formas', audio: text, shown: text, answers: [text], translation: v.es };
+    return { ...withAudio({ type: 'listen_type', skill: 'listening', verb: v.base, strict: true, question: 'Escucha y escribe las 3 formas', audio: text, shown: text, answers: [text], translation: `${v.es} · ${allForms(v)}` }, v), say: null };
   }
   function speakEx(v) {
-    return { type: 'speak', skill: 'speaking', verb: v.base, question: 'Di en voz alta las 3 formas', text: `${v.base}, ${v.past[0]}, ${v.pp[0]}`, translation: v.es };
+    return { ...withAudio({ type: 'speak', skill: 'speaking', verb: v.base, question: 'Di en voz alta las 3 formas', text: `${v.base}, ${v.past[0]}, ${v.pp[0]}`, translation: v.es }, v), say: null };
   }
   function speakFormEx(v, f) {
     const form = first(formsOf(v, f));
     const ctx = { past: `Yesterday I ${form}`, pp: `I have ${form}`, ing: `I am ${form}`, s: `She ${form}` }[f];
-    return { type: 'speak', skill: 'speaking', verb: v.base, question: `Di la frase con el ${FORM_SHORT[f]} de "${v.base}"`, text: ctx, translation: `${v.es} — ${FORM_LABELS[f]}`, hideText: true };
+    return withAudio({ type: 'speak', skill: 'speaking', verb: v.base, question: `Di la frase con el ${FORM_SHORT[f]} de "${v.base}"`, text: ctx, translation: `${v.es} — ${FORM_LABELS[f]}`, hideText: true }, v);
   }
   function edEx(v) {
     const past = v.past[0];
     const opts = ['/t/ — como "workt"', '/d/ — como "playd"', '/ɪd/ — sílaba extra "id"'];
-    return { type: 'choice', skill: 'listening', verb: v.base, question: `¿Cómo suena la terminación de "${past}"?`, audio: past, options: opts, answer: { t: 0, d: 1, id: 2 }[v.ed], explain: 'Después de t/d suena /ɪd/; después de p, k, f, s, sh, ch, x suena /t/; en los demás casos /d/.' };
+    return { type: 'choice', skill: 'listening', verb: v.base, question: `¿Cómo suena la terminación de "${past}"?`, audio: past, options: opts, answer: { t: 0, d: 1, id: 2 }[v.ed], explain: `${allForms(v)}. Después de t/d suena /ɪd/; después de p, k, f, s, sh, ch, x suena /t/; en los demás casos /d/.`, sayAfter: sayForms(v) };
   }
   function regIrrEx(v) {
-    return { type: 'choice', skill: 'grammar', verb: v.base, question: `¿"${v.base}" (${v.es}) es regular o irregular?`, options: ['Regular (-ed)', 'Irregular'], answer: v.irregular ? 1 : 0, explain: allForms(v) };
+    return { type: 'choice', skill: 'grammar', verb: v.base, question: `¿"${v.base}" (${v.es}) es regular o irregular?`, options: ['Regular (-ed)', 'Irregular'], answer: v.irregular ? 1 : 0, explain: allForms(v), say: v.base, sayAfter: sayForms(v) };
   }
 
   /** Crea una sesión de práctica. mode: mix | write | oral */
@@ -241,7 +245,7 @@ window.Verbs = (function () {
     });
     if (mode !== 'oral' && verbs.length >= 4) {
       const pairs = shuffle(verbs).slice(0, 5).map((v) => [v.base, v.past[0]]);
-      if (new Set(pairs.map((p) => p[1])).size === pairs.length) out.push({ type: 'match', skill: 'vocab', question: 'Une cada verbo con su pasado', pairs });
+      if (new Set(pairs.map((p) => p[1])).size === pairs.length) out.push({ type: 'match', skill: 'vocab', question: 'Une cada verbo con su pasado', pairs, speakBoth: true, sayAfter: pairs.map((p) => `${p[0]}, ${p[1]}`).join('. ') });
     }
     // primero una vuelta de opción múltiple / escucha, después producción
     return mode === 'mix' ? [...out.filter((e) => e.type === 'choice'), ...shuffle(out.filter((e) => e.type !== 'choice'))] : out;
@@ -254,5 +258,5 @@ window.Verbs = (function () {
     return choiceEx(v, f);
   }
 
-  return { list, byBase, conjugate, search, GROUPS, groupVerbs, record, stats, dueVerbs, hardVerbs, pickForSession, buildSession, quickQuestion, FORM_LABELS, allForms, edSound, gerund, regularPast, third };
+  return { sayForms, list, byBase, conjugate, search, GROUPS, groupVerbs, record, stats, dueVerbs, hardVerbs, pickForSession, buildSession, quickQuestion, FORM_LABELS, allForms, edSound, gerund, regularPast, third };
 })();

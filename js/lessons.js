@@ -51,7 +51,7 @@ window.Lessons = (function () {
       const correct = g.q.replace('___', g.o[g.a]);
       const wrong = g.o.filter((_, i) => i !== g.a).map((o) => g.q.replace('___', o));
       const opts = shuffle([correct, ...wrong]);
-      out.push({ type: 'choice', skill: 'grammar', question: '¿Qué oración es correcta?', options: opts, answer: opts.indexOf(correct), explain: g.e });
+      out.push({ type: 'choice', skill: 'grammar', question: '¿Qué oración es correcta?', options: opts, answer: opts.indexOf(correct), explain: g.e, speakOptions: true, sayAfter: correct });
     });
     return out;
   }
