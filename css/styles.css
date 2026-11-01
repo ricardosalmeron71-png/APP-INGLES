@@ -526,3 +526,8 @@ button.skill-row { width: 100%; background: var(--card); font: inherit; text-ali
 .tg-opt { justify-content: center; font-size: 1.2rem; font-weight: 800; min-height: 70px; }
 .option.good { border-color: var(--green); background: var(--ok-bg); color: var(--green-d); }
 .tg-final { font-size: 4rem; font-weight: 900; color: var(--orange); }
+
+/* ---------- tutor: envío manual y temas compartidos ---------- */
+#send.ready { animation: pulse 1.2s infinite; }
+.topic-row { cursor: pointer; }
+.topic-row .icon-btn { font-size: 1.1rem; }

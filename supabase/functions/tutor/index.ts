@@ -7,7 +7,7 @@
 //
 // Secretos opcionales:
 //   TUTOR_MODEL     modelo de Claude (por defecto claude-haiku-5-5, el más económico)
-//   AI_DAILY_LIMIT  mensajes por usuario al día (por defecto 40)
+//   AI_DAILY_LIMIT  mensajes por usuario al día (por defecto 50)
 //
 // Ahorro de costos: modelo Haiku, esfuerzo "low", solo los últimos mensajes
 // de la conversación, respuestas cortas y límite diario por usuario.
@@ -17,7 +17,7 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MODEL = Deno.env.get("TUTOR_MODEL") || "claude-haiku-5-5";
-const DAILY_LIMIT = Number(Deno.env.get("AI_DAILY_LIMIT") || 40);
+const DAILY_LIMIT = Number(Deno.env.get("AI_DAILY_LIMIT") || 50);
 // La red de respaldo del servidor (fallbacks) existe para Opus, Fable y Sonnet 5.5; no para Haiku.
 const SUPPORTS_FALLBACKS = /^claude-(opus-5|fable-5|sonnet-5-5)/.test(MODEL);
 

@@ -78,10 +78,18 @@ Por defecto Supabase pide confirmar el correo al registrarse. Para que tus amigo
 
 | Secreto | Para qué | Valor por defecto |
 |---|---|---|
-| `AI_DAILY_LIMIT` | Máximo de mensajes con el tutor por usuario al día | `40` |
+| `AI_DAILY_LIMIT` | Máximo de mensajes con el tutor por usuario al día | `50` |
 | `TUTOR_MODEL` | Modelo de Claude | `claude-haiku-5-5` (el más económico) |
 
-### 5.4 Probar
+### 5.4 Temas compartidos del tutor (opcional pero recomendado)
+
+Para que los temas propios que crea cada usuario se guarden y todos puedan usarlos:
+1. Supabase → **SQL Editor** → **New query**.
+2. Pega todo el contenido de [`supabase/topics.sql`](supabase/topics.sql) y toca **Run**.
+
+Cada usuario puede crear hasta 10 temas por día y borrar solo los suyos. Si alguien publica un tema inadecuado, puedes borrarlo tú desde **Table Editor → tutor_topics**.
+
+### 5.5 Probar
 
 1. Abre la app → **Perfil** → tarjeta **☁️ Nube** → escribe tu contraseña → **Conectar**.
 2. Ve a **Práctica** → **🤖 Tutor con IA** → elige a Emma y **Charla libre**.
@@ -98,7 +106,7 @@ Por defecto Supabase pide confirmar el correo al registrarse. Para que tus amigo
 - **Cómo se ahorra uso:**
   - La **voz es gratis**: el teléfono convierte tu voz en texto y lee las respuestas en voz alta. La IA solo recibe y devuelve texto.
   - Solo se envían los **últimos 14 mensajes** de la conversación y las respuestas son cortas.
-  - Cada usuario tiene un **límite diario** (`AI_DAILY_LIMIT`, 40 por defecto).
+  - Cada usuario tiene un **límite diario** (`AI_DAILY_LIMIT`, 50 por defecto).
   - La evaluación final solo se pide cuando tocas **Terminar**.
   - El **límite mensual** de la consola de Anthropic (paso 5.1) es tu seguro: al llegar a él, el tutor se detiene hasta el mes siguiente y no se cobra más.
 - Los **diálogos guiados** (Práctica → 💬) siguen funcionando gratis y sin internet.

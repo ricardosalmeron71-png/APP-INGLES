@@ -37,6 +37,8 @@ window.Cloud = (function () {
     if (/email not confirmed/i.test(msg)) return 'Confirma tu correo (revisa tu bandeja de entrada) y vuelve a intentarlo.';
     if (/password should be/i.test(msg)) return 'La contraseña debe tener al menos 6 caracteres.';
     if (/rate limit/i.test(msg)) return 'Demasiados intentos. Espera un momento.';
+    if (/duplicate key|unique constraint/i.test(msg)) return 'Ese ya existe.';
+    if (/check constraint/i.test(msg)) return 'El tema debe tener entre 3 y 80 caracteres.';
     return msg;
   }
 
@@ -151,5 +153,23 @@ window.Cloud = (function () {
     }
   }
 
-  return { enabled, connected, signUp, signIn, signInOrUp, push, pull, myProfile, scheduleSync, friends, leaderboard, addFriend, removeFriend, tutor, CloudError };
+  /* ------------------ TEMAS COMPARTIDOS DEL TUTOR ------------------ */
+  async function topics(u) {
+    const t = await token(u);
+    return request('/rest/v1/tutor_topics?select=id,title,author,uses,user_id,created_at&order=uses.desc,created_at.desc&limit=40', { token: t });
+  }
+  async function addTopic(u, title) {
+    const t = await token(u);
+    const rows = await request('/rest/v1/tutor_topics', { method: 'POST', token: t, headers: { Prefer: 'return=representation' }, body: { title, user_id: u.cloud.uid } });
+    return rows && rows[0];
+  }
+  async function deleteTopic(u, id) {
+    const t = await token(u);
+    return request(`/rest/v1/tutor_topics?id=eq.${Number(id)}`, { method: 'DELETE', token: t });
+  }
+  async function useTopic(u, id) {
+    try { const t = await token(u); await request('/rest/v1/rpc/use_topic', { method: 'POST', token: t, body: { tid: Number(id) } }); } catch (e) { /* no es importante */ }
+  }
+
+  return { topics, addTopic, deleteTopic, useTopic, enabled, connected, signUp, signIn, signInOrUp, push, pull, myProfile, scheduleSync, friends, leaderboard, addFriend, removeFriend, tutor, CloudError };
 })();
