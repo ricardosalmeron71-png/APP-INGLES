@@ -17,6 +17,7 @@ y funciona **sin conexión**. No necesita tiendas de aplicaciones ni servidor.
 | ✍️ **Análisis de escritura** | Detecta errores típicos (I minúscula, “people is”, “I have 20 years”, “he don’t”, “did went”, “more better”, a/an, preposiciones, falsos amigos…), ortografía, mayúsculas, puntuación, repeticiones, longitud, variedad de vocabulario, conectores y uso de las estructuras de la lección. |
 | 🔊 **Audio** | Todo el inglés se puede escuchar (normal y 🐢 lento), acento 🇺🇸 / 🇬🇧 / 🇦🇺 y velocidad ajustables. |
 | 💪 **Práctica** | Repaso de errores, tarjetas con **repetición espaciada** (Leitner), práctica por habilidad, laboratorio de voz, laboratorio de escritura, **conversaciones simuladas** (cafetería, hotel, entrevista, reclamación) y guía gramatical con buscador. |
+| 🔔 **Recordatorios** | Notificaciones push a la hora que elijas, **con la app cerrada**, solo si aún no practicaste ese día (y un aviso si tu racha está en peligro). Máximo 2 al día, nunca de madrugada, menos si dejas de practicar. Sin nube: aviso con la app abierta. En cualquier teléfono: recordatorio diario en el calendario (.ics). Ver Parte 6 de GUIA_NUBE.md. |
 | 🔥 **Motivación diaria** | Misiones del día (3, distintas cada día) con cofre sorpresa, racha con semana visible y protectores, aviso cuando la racha está en peligro, rangos de jugador (Semilla → Sabio), hitos de racha con bonificación, palabra del día, resumen semanal con meta y **Práctica rápida de 5 minutos** que mezcla vocabulario, verbos, gramática y pronunciación. Diseñado para premiar, no para presionar. |
 | 🎙️ **Entrenador de pronunciación** | 14 sonidos difíciles para hispanohablantes (TH, V/B, i corta/larga, SH/CH, J/Y, s+consonante, -ED, consonantes finales, H, R, a/u/o cortas, -NG, letras mudas). Escucha lo que dices, detecta *qué* sonido fallaste ("dijiste *sink* en vez de *think*"), explica cómo hacerlo y deja reintentar 3 veces. Pares mínimos para entrenar el oído, trabalenguas con récord, diagnóstico, práctica diaria de 3 minutos adaptada a tus sonidos más débiles y repaso de palabras difíciles. |
 | 🔤 **Verbos** | 734 verbos (186 irregulares y 548 regulares) con presente, 3ª persona, pasado, participio y gerundio. Consulta con buscador en inglés o español y por cualquier forma; si un verbo no está, calcula sus formas regulares. Juegos mixtos, escritos (ortografía exacta) y orales (dictado y pronunciación), unir parejas, sonido de -ed, contrarreloj de 60 s con récord, grupos por nivel y por patrón, y repaso espaciado por verbo. |
@@ -69,6 +70,11 @@ js/config.js            Datos públicos del proyecto de Supabase (vacío = sin n
 js/cloud.js             Nube: cuentas, sincronización, ranking en vivo, tutor IA
 supabase/schema.sql     Base de datos y reglas de seguridad (pegar en Supabase)
 supabase/functions/tutor/index.ts   Servidor del tutor IA (guarda la clave de Anthropic)
+supabase/functions/reminders/       Servidor de recordatorios push (+ pruebas con Deno)
+supabase/topics.sql / reminders.sql Tablas de temas compartidos y de recordatorios
+js/notify.js            Recordatorios: permisos, suscripción push, aviso local y calendario
+js/engage.js            Misiones, cofre, rangos, racha y palabra del día
+js/pronunciation.js     Entrenador de pronunciación
 ```
 
 ## ➕ Agregar contenido

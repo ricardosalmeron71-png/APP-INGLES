@@ -10,5 +10,7 @@ window.EU_CONFIG = {
   supabaseUrl: 'https://bwdkfahrgvqfqxryjfll.supabase.co',
   supabaseAnonKey: 'sb_publishable_p68umFTv9fGsdIrymJRO2Q_l-wYd1_p',
   // Nombre de la Edge Function del tutor IA en Supabase
-  tutorFunction: 'hyper-api'
+  tutorFunction: 'hyper-api',
+  // Nombre de la Edge Function de recordatorios
+  remindersFunction: 'reminders'
 };

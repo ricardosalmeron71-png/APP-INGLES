@@ -121,3 +121,49 @@ Cada usuario puede crear hasta 10 temas por día y borrar solo los suyos. Si alg
 | *“El tutor no está disponible ahora”* | Revisa que tengas crédito en Anthropic o que no hayas llegado al límite mensual. |
 | *“Llegaste al límite de mensajes por hoy”* | Es el límite diario; sube `AI_DAILY_LIMIT` si quieres. |
 | No aparece nada en el ranking global | Cada persona debe conectar la nube y tener activado *Aparecer en el ranking global*. |
+
+---
+
+## Parte 6 — Recordatorios con notificaciones (aunque la app esté cerrada)
+
+Sin esta parte, los recordatorios funcionan solo mientras la app está abierta (y el calendario siempre funciona).
+Con ella, cada persona elige su hora y le llega una notificación al teléfono **solo si todavía no practicó ese día**.
+No necesita claves ni secretos: las llaves de notificación las crea la propia función.
+
+### 6.1 Activar las extensiones
+Supabase → **Database** → **Extensions** → busca **`pg_cron`** y activa el interruptor; haz lo mismo con **`pg_net`**.
+
+### 6.2 Crear las tablas y el programador automático
+1. **SQL Editor** → **New query**.
+2. Pega todo el contenido de [`supabase/reminders.sql`](supabase/reminders.sql) y toca **Run** ("Success").
+
+### 6.3 Crear la función `reminders`
+1. **Edge Functions** → **Deploy a new function** → **Via Editor**.
+2. Borra el código de ejemplo, pega todo [`supabase/functions/reminders/index.ts`](supabase/functions/reminders/index.ts) y toca **Deploy**.
+3. Supabase le pone un nombre automático (por ejemplo `hyper-api` o `smooth-handler`). **Anótalo**: lo ves en la lista de funciones.
+
+### 6.4 Dos ajustes importantes
+1. En la función nueva → pestaña **Settings** → **apaga** "Verify JWT with legacy secret" → **Save changes**. (La función verifica por su cuenta quién eres; el programador automático no lleva sesión.)
+2. Si el nombre que anotaste **no es** `reminders`, ve al **SQL Editor** y ejecuta (cambiando el nombre):
+   ```sql
+   update public.push_config set function_slug = 'EL-NOMBRE-QUE-ANOTASTE';
+   ```
+   y envíame ese nombre para ponerlo en la app (o cambia `remindersFunction` en `js/config.js`).
+
+### 6.5 Probar
+1. En el teléfono: **Perfil → 🔔 Recordatorios** → activa "Recordarme cada día", elige tu hora y **permite las notificaciones**.
+2. Toca **🔔 Probar notificación**: debe llegar un aviso a tu teléfono.
+3. Cada 15 minutos el servidor revisa quién toca avisar. Puedes ver que corre en **Database → Cron Jobs** (`englishup-reminders`) y los avisos enviados en **Edge Functions → reminders → Logs**.
+
+### Cómo cuida a las personas (no molesta)
+- Solo avisa si **todavía no practicaste ese día**, y nunca más de **2 veces al día** (recordatorio y aviso de racha en peligro por la noche).
+- Nunca envía de madrugada; respeta la zona horaria de cada persona y los días que elija.
+- Si alguien deja de practicar, avisa cada vez menos (cada 5 días tras 2 semanas) y a las 6 semanas se apaga solo.
+- Cada persona puede desactivarlo cuando quiera. Al cerrar sesión se da de baja el dispositivo.
+- Solo se guarda: nombre, hora, días, racha y fecha de la última práctica.
+
+### Detalles según el teléfono
+- **Android (Chrome):** funciona directamente, también con la app sin instalar.
+- **iPhone:** Apple solo permite notificaciones si la app está **instalada en la pantalla de inicio** (Compartir → Agregar a inicio). La app se lo explica a la persona. Mientras tanto puede usar el recordatorio de calendario.
+- **Costo:** nada. Está dentro del plan gratuito de Supabase.
+

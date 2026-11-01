@@ -91,11 +91,32 @@ window.Cloud = (function () {
       method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: { id: u.cloud.uid, data: privateCopy(u), updated_at: now }
     });
+    try { await pushActivity(u); } catch (e) { /* no es crítico */ }
     await request(`/rest/v1/profiles?id=eq.${u.cloud.uid}`, {
       method: 'PATCH', token: t, headers: { Prefer: 'return=minimal' },
       body: { name: u.name, avatar: u.profile.avatar, is_public: u.settings.publicProfile !== false, summary: s, xp: s.x, week_xp: s.w, level: s.l, cefr: s.c, streak: s.s, updated_at: now }
     });
   }
+  /* ------------------ RECORDATORIOS (notificaciones push) ------------------ */
+  async function remindersCall(u, body) {
+    const t = await token(u);
+    try { return await request(`/functions/v1/${encodeURIComponent(cfg.remindersFunction || 'reminders')}`, { method: 'POST', token: t, body }); }
+    catch (e) {
+      if (e.status === 404) throw new CloudError('Los recordatorios todavía no están activados en el servidor (ver GUIA_NUBE.md, Parte 6).', 404);
+      throw e;
+    }
+  }
+  /** Mantiene al día la racha y la última práctica para que el servidor no te avise si ya practicaste */
+  async function pushActivity(u) {
+    const r = u.settings && u.settings.reminder;
+    if (!r || !r.on || r.mode !== 'push' || !r.endpoint) return;
+    const t = await token(u);
+    await request(`/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(r.endpoint)}`, {
+      method: 'PATCH', token: t, headers: { Prefer: 'return=minimal' },
+      body: { name: u.name, streak: window.Store.currentStreak(u), last_practice: window.Notify ? window.Notify.lastPractice(u) : null }
+    });
+  }
+
   async function pull(u) {
     const t = await token(u);
     const rows = await request(`/rest/v1/user_data?id=eq.${u.cloud.uid}&select=data,updated_at`, { token: t });
@@ -171,5 +192,5 @@ window.Cloud = (function () {
     try { const t = await token(u); await request('/rest/v1/rpc/use_topic', { method: 'POST', token: t, body: { tid: Number(id) } }); } catch (e) { /* no es importante */ }
   }
 
-  return { topics, addTopic, deleteTopic, useTopic, enabled, connected, signUp, signIn, signInOrUp, push, pull, myProfile, scheduleSync, friends, leaderboard, addFriend, removeFriend, tutor, CloudError };
+  return { remindersCall, pushActivity, topics, addTopic, deleteTopic, useTopic, enabled, connected, signUp, signIn, signInOrUp, push, pull, myProfile, scheduleSync, friends, leaderboard, addFriend, removeFriend, tutor, CloudError };
 })();

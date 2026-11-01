@@ -579,3 +579,8 @@ html.dark .risk-banner { background: #3d3214; color: #ffd76a; }
 .lead2 { font-size: 1.05rem; }
 .chest-shake { animation: shakeChest 1s infinite; }
 @keyframes shakeChest { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-8deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-5deg); } 80% { transform: rotate(5deg); } }
+
+/* ---------- recordatorios ---------- */
+.chip-s.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+.rem-status { margin: 8px 0; line-height: 1.5; }
+#rem-card input[type=time] { max-width: 180px; }

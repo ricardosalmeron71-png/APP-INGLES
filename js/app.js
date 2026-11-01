@@ -417,8 +417,11 @@
           </div>`).join('')}</div>
         <h3>Recomendaciones</h3>
         <div class="card">${p.recs.map((r) => `<p>✔️ ${r}</p>`).join('')}</div>
+        <h3>Tu hora de práctica</h3>
+        ${reminderCard(u)}
         <div class="stack"><a class="btn" href="#/learn">¡Empezar a aprender!</a><a class="btn secondary" href="#/profile">Ajustar meta diaria</a></div>
       </div>`;
+    bindReminderCard();
   };
 
   /* ------------------ CAMINO DE APRENDIZAJE ------------------ */
@@ -616,6 +619,7 @@
           <button class="btn secondary" id="again">🔁 Repetir lección</button>
         </div>
       </div>`;
+    setTimeout(maybeAskReminder, 2500);
     $('#next').addEventListener('click', () => { learnScroll = true; go('/learn'); });
     $('#again').addEventListener('click', () => go(`/lesson/${unit.id}/${typeId}`));
     announceAchievements(got);
@@ -1210,6 +1214,99 @@
       hooks: { ...base, onResult: (e, ok, retry) => { base.onResult(e, ok, retry); if (e.verb && !retry) St.update((x) => { Vb.record(x, e.verb, ok); Eg.track(x, 'verbs', 1); }); } }
     });
   };
+
+
+  /* ------------------ RECORDATORIOS ------------------ */
+  const Nt = window.Notify;
+  const p2 = (n) => String(n).padStart(2, '0');
+  function reminderCard(u) {
+    const r = Nt.get(u), st = Nt.status(u);
+    const chips = [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']];
+    return `
+      <div class="card" id="rem-card">
+        <h4>🔔 Recordatorios para practicar</h4>
+        <p class="small muted">Practicar un poco cada día rinde más que mucho un solo día. Te avisamos a la hora que elijas, solo si todavía no practicaste.</p>
+        <label class="toggle"><input type="checkbox" id="rem-on" ${r.on ? 'checked' : ''}> Recordarme cada día</label>
+        <div id="rem-opts" class="${r.on ? '' : 'hidden'}">
+          <label>Hora<input type="time" id="rem-time" value="${p2(r.hour)}:${p2(r.minute)}"></label>
+          <div class="small muted">Días</div>
+          <div class="chips-row" id="rem-days">${chips.map(([d, l]) => `<button type="button" class="chip-s ${r.days.includes(d) ? 'on' : ''}" data-d="${d}">${l}</button>`).join('')}</div>
+          <label class="toggle"><input type="checkbox" id="rem-alert" ${r.streakAlert ? 'checked' : ''}> Avisarme si mi racha está en peligro</label>
+        </div>
+        <div class="small rem-status" id="rem-status">${esc(st.text)}</div>
+        <div class="stack"><button class="btn small secondary" id="rem-test" ${r.on ? '' : 'disabled'}>🔔 Probar notificación</button>
+          <button class="btn small secondary" id="rem-ics">📅 Agregar recordatorio al calendario</button></div>
+        <p class="small muted">🔒 Para avisarte solo guardamos tu nombre, la hora, tu racha y cuándo practicaste por última vez. Máximo 2 avisos al día y nunca de madrugada.</p>
+      </div>`;
+  }
+  function iosInstallModal() {
+    modal(`<div class="center-text"><div class="big-emoji">📲</div><h3>Instala la app para recibir avisos</h3>
+      <p class="muted">En iPhone, las notificaciones solo funcionan cuando la app está instalada en tu pantalla de inicio:</p>
+      <ol class="coach-steps"><li>Toca <b>Compartir</b> (el cuadrado con la flecha) en Safari.</li><li>Elige <b>Agregar a inicio</b>.</li><li>Abre EnglishUp desde el nuevo ícono y activa los recordatorios.</li></ol>
+      <p class="small muted">Mientras tanto puedes usar el recordatorio de calendario.</p><button class="btn" data-close>Entendido</button></div>`);
+  }
+  function reminderError(e) {
+    const m = e && e.message;
+    if (m === 'ios-install') return iosInstallModal();
+    toast(m === 'denied' ? '⚠️ Permiso bloqueado. Actívalo en los ajustes del navegador (candado junto a la dirección).' : m === 'unsupported' ? 'Este navegador no permite notificaciones. Usa el calendario.' : '❌ ' + esc(m || 'No se pudo activar'), 4500);
+  }
+  function bindReminderCard(onChange) {
+    const root = $('#rem-card'); if (!root) return;
+    const prefs = () => {
+      const [h, m] = ($('#rem-time', root).value || '19:00').split(':').map(Number);
+      return { hour: Number.isFinite(h) ? h : 19, minute: Number.isFinite(m) ? m : 0, days: $$('#rem-days .chip-s.on', root).map((b) => +b.dataset.d), streakAlert: $('#rem-alert', root).checked };
+    };
+    const refresh = () => {
+      const u = St.user(), on = Nt.get(u).on;
+      $('#rem-opts', root).classList.toggle('hidden', !on);
+      $('#rem-on', root).checked = on;
+      $('#rem-test', root).disabled = !on;
+      $('#rem-status', root).textContent = Nt.status(u).text;
+      onChange && onChange(on);
+    };
+    $('#rem-on', root).addEventListener('change', async (ev) => {
+      const box = ev.target; box.disabled = true;
+      try {
+        if (box.checked) {
+          const p = prefs(); if (!p.days.length) p.days = [0, 1, 2, 3, 4, 5, 6];
+          const mode = await Nt.enable(p);
+          toast(mode === 'push' ? '🔔 ¡Listo! Te avisaremos aunque la app esté cerrada.' : '🔔 Recordatorio activado (mientras la app esté abierta).', 3500);
+        } else await Nt.disable();
+      } catch (e) { box.checked = false; reminderError(e); }
+      box.disabled = false; refresh();
+    });
+    $('#rem-time', root).addEventListener('change', () => { const p = prefs(); Nt.update({ hour: p.hour, minute: p.minute }); toast('⏰ Hora actualizada'); });
+    $$('#rem-days .chip-s', root).forEach((b) => b.addEventListener('click', () => {
+      const on = $$('#rem-days .chip-s.on', root);
+      if (b.classList.contains('on') && on.length === 1) return toast('Elige al menos un día');
+      b.classList.toggle('on'); Nt.update({ days: prefs().days });
+    }));
+    $('#rem-alert', root).addEventListener('change', () => Nt.update({ streakAlert: prefs().streakAlert }));
+    $('#rem-test', root).addEventListener('click', async (ev) => {
+      ev.target.disabled = true;
+      try { const how = await Nt.test(); toast(how === 'push' ? '🔔 Enviamos una notificación a tu teléfono' : '🔔 ¡Funciona! (aviso local)'); }
+      catch (e) { toast('❌ ' + esc(e.message), 4000); }
+      ev.target.disabled = !Nt.get(St.user()).on;
+    });
+    $('#rem-ics', root).addEventListener('click', () => { Nt.downloadIcs(St.user()); toast('📅 Abre el archivo descargado para agregarlo a tu calendario', 4500); });
+  }
+  /** Después de la primera práctica (cuando ya viste el valor), se ofrece el recordatorio una sola vez */
+  function maybeAskReminder() {
+    const u = St.user();
+    if (!u || !$('.result') || modalOpen()) return;
+    if (Nt.get(u).on || u.progress.reminderAsked || Nt.permission() === 'denied' || Nt.permission() === 'unsupported') return;
+    St.update((x) => { x.progress.reminderAsked = true; });
+    modal(`<div class="center-text celebrate"><div class="big-emoji huge">🔔</div><h3>¿Te recordamos practicar mañana?</h3>
+      <p class="muted">Practicar un poco cada día es lo que más funciona. Te avisamos solo si todavía no practicaste.</p>
+      <label>¿A qué hora?<input type="time" id="ask-time" value="19:00"></label>
+      <button class="btn" id="ask-yes">Sí, recuérdame</button><button class="btn ghost" data-close>Ahora no</button></div>`, (m, close) => {
+      $('#ask-yes', m).addEventListener('click', async () => {
+        const [h, mi] = $('#ask-time', m).value.split(':').map(Number);
+        try { const mode = await Nt.enable({ hour: h || 19, minute: mi || 0 }); close(); toast(mode === 'push' ? '🔔 ¡Listo! Te avisaremos mañana.' : '🔔 Recordatorio activado (con la app abierta).', 3500); }
+        catch (e) { close(); reminderError(e); }
+      });
+    });
+  }
 
 
   /* ------------------ TARJETAS (repetición espaciada) ------------------ */
@@ -2105,6 +2202,7 @@
               <input type="password" id="cpw" placeholder="Escribe tu contraseña de EnglishUp" autocomplete="current-password">
               <button class="btn small" id="cconn">☁️ Conectar</button>`}
         </div>
+        ${reminderCard(u)}
         <div class="card">
           <h4>🎨 Apariencia</h4>
           <label class="toggle"><input type="checkbox" id="dark" ${s.dark ? 'checked' : ''}> Modo oscuro</label>
@@ -2121,6 +2219,7 @@
         <p class="small muted center-text">EnglishUp v1.2 · Funciona sin conexión</p>
       </main>
       ${tabbar('profile')}`;
+    bindReminderCard();
     const set = (fn) => { St.update(fn); applySettings(St.user()); };
     $('#av').addEventListener('click', () => modal(`<h3>Elige tu avatar</h3><div class="avatars">${avatars.map((a) => `<button data-a="${a}">${a}</button>`).join('')}</div>`, (m, close) => {
       $$('[data-a]', m).forEach((b) => b.addEventListener('click', () => { set((x) => { x.profile.avatar = b.dataset.a; }); close(); render(); }));
@@ -2139,7 +2238,7 @@
       $('#sync').addEventListener('click', async () => {
         try { await Cloud.push(St.user()); St.markSynced(); toast('✅ Sincronizado'); render(); } catch (e) { toast('❌ ' + esc(e.message)); }
       });
-      $('#disc').addEventListener('click', () => { if (confirm('¿Desconectar este teléfono de la nube? Tu progreso se queda aquí y en la nube.')) { set((x) => { delete x.cloud; }); render(); } });
+      $('#disc').addEventListener('click', async () => { if (confirm('¿Desconectar este teléfono de la nube? Tu progreso se queda aquí y en la nube.')) { await Nt.disable().catch(() => {}); set((x) => { delete x.cloud; }); render(); } });
     } else if (Cloud.enabled()) {
       $('#cconn').addEventListener('click', async (ev) => {
         const pw = $('#cpw').value;
@@ -2160,8 +2259,8 @@
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `englishup-${u.name}.json`; a.click();
     });
     $('#imp').addEventListener('change', (e) => importFile(e.target.files[0]));
-    $('#logout').addEventListener('click', () => { St.logout(); go('/welcome'); });
-    $('#delete').addEventListener('click', () => { if (confirm('¿Eliminar tu cuenta y todo tu progreso? Esta acción no se puede deshacer.')) { St.deleteAccount(); go('/welcome'); } });
+    $('#logout').addEventListener('click', async () => { await Nt.disable().catch(() => {}); St.logout(); go('/welcome'); });
+    $('#delete').addEventListener('click', () => { if (confirm('¿Eliminar tu cuenta y todo tu progreso? Esta acción no se puede deshacer.')) { Nt.disable().catch(() => {}).finally(() => { St.deleteAccount(); go('/welcome'); }); } });
   };
 
   routes.retest = () => {
@@ -2173,6 +2272,11 @@
   St.setOnChange(() => { Cloud.scheduleSync(); engageCheck(); });
   render();
   syncOnStart();
+  Nt.refresh();
+  Nt.setLocalHandler((body) => toast(`<span class="big-emoji">🦉</span><div><b>Hora de practicar</b><div>${esc(body)}</div></div>`, 7000));
+  setInterval(() => Nt.localTick(), 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) Nt.localTick(); });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.type === 'goto') { const h = new URL(e.data.url).hash; if (h) location.hash = h.slice(1); } });
   window.addEventListener('online', () => Cloud.scheduleSync());
 
   // PWA: registrar service worker y prompt de instalación
