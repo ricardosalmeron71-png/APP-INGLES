@@ -12,5 +12,5 @@ window.EU_CONFIG = {
   // Nombre de la Edge Function del tutor IA en Supabase
   tutorFunction: 'hyper-api',
   // Nombre de la Edge Function de recordatorios
-  remindersFunction: 'reminders'
+  remindersFunction: 'super-handler'
 };

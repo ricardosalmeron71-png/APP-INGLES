@@ -1,5 +1,5 @@
 /* Service worker: permite usar la app sin conexión */
-const CACHE = 'englishup-v12';
+const CACHE = 'englishup-v13';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
   './js/config.js', './js/data.js', './js/cloud.js', './js/analysis.js', './js/speech.js', './js/store.js', './js/lessons.js', './js/verbs.js', './js/pronunciation.js', './js/engage.js', './js/notify.js', './js/exercises.js', './js/app.js',
