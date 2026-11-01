@@ -549,3 +549,33 @@ button.skill-row { width: 100%; background: var(--card); font: inherit; text-ali
 .pairs { display: grid; gap: 6px; }
 .pair { display: flex; align-items: center; gap: 8px; justify-content: center; }
 .coach-hero .ring { --s: 72px; }
+
+/* ---------- motivación diaria ---------- */
+.quick-cta { margin: 10px 0; font-size: 1.05rem; background: linear-gradient(135deg, #ff9600, #ff6a00); box-shadow: 0 4px 0 #cc6600; }
+.rank-line { margin-top: 4px; }
+.risk-banner { display: flex; align-items: center; gap: 10px; justify-content: space-between; background: #fff4d6; color: #7a5600; border: 2px solid var(--orange); border-radius: var(--radius); padding: 10px 12px; margin: 10px 0; font-weight: 700; font-size: .9rem; }
+html.dark .risk-banner { background: #3d3214; color: #ffd76a; }
+.streak-card.ok { border-color: var(--orange); }
+.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 10px 0 6px; }
+.wd { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: .7rem; font-weight: 800; color: var(--muted); padding: 5px 0; border-radius: 12px; background: var(--bg2); }
+.wd i { font-style: normal; font-size: 1.2rem; min-height: 1.5rem; }
+.wd.on { background: #fff4d6; color: var(--orange); } html.dark .wd.on { background: #3d3214; }
+.wd.today { outline: 2px solid var(--blue); }
+.quest { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.quest .q-ico { font-size: 1.5rem; }
+.quest .q-text { font-weight: 700; font-size: .92rem; }
+.quest.done .q-text { text-decoration: line-through; color: var(--muted); }
+.quest small { color: var(--muted); font-weight: 700; min-width: 34px; text-align: right; }
+.quest b { min-width: 34px; text-align: right; color: var(--orange); }
+.chest-btn { margin-top: 12px; }
+.chest-btn.locked { font-size: .85rem; }
+.chest-btn.ready { background: linear-gradient(135deg, #ffc800, #ff9600); box-shadow: 0 4px 0 #cc7a00; animation: pulse 1.4s infinite; }
+.chest-btn.opened { background: var(--bg2); color: var(--muted); box-shadow: none; }
+.wod-emoji { font-size: 2.4rem; }
+.wod-word { font-size: 1.3rem; }
+.rank-ico { font-size: 2.6rem; }
+.celebrate h2 { margin: 8px 0; }
+.huge { font-size: 5rem !important; display: block; margin: 6px 0; }
+.lead2 { font-size: 1.05rem; }
+.chest-shake { animation: shakeChest 1s infinite; }
+@keyframes shakeChest { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-8deg); } 40% { transform: rotate(8deg); } 60% { transform: rotate(-5deg); } 80% { transform: rotate(5deg); } }

@@ -429,6 +429,7 @@
     const dueW = St.dueWords(u).length, mist = u.progress.mistakes.length;
     const plan = St.buildPlan(u);
     const xpToday = u.progress.xpByDay[St.today()] || 0;
+    const rk = Eg.rank(u.progress.xp);
 
     const unitHtml = (unit, n) => {
       const unlocked = St.isUnitUnlocked(u, unit);
@@ -467,9 +468,12 @@
         <div class="card hello">
           <div><div class="muted small">¡Hola, ${esc(u.name.split(' ')[0])}! ${u.profile.avatar}</div>
             <b>${xpToday >= plan.dailyXP ? '¡Meta diaria cumplida! 🎉' : `Hoy: ${xpToday} / ${plan.dailyXP} XP`}</b>
-            <div class="unit-bar"><div style="width:${Math.min(100, 100 * xpToday / plan.dailyXP)}%"></div></div></div>
+            <div class="unit-bar"><div style="width:${Math.min(100, 100 * xpToday / plan.dailyXP)}%"></div></div>
+            <div class="small muted rank-line">${rk.icon} ${rk.name}${rk.next ? ` · faltan ${rk.toNext} XP para ${rk.next.icon} ${rk.next.name}` : ' · rango máximo'}</div></div>
           ${nxt ? `<button class="btn small" id="continue">▶ Continuar</button>` : ''}
         </div>
+        <a class="btn quick-cta" href="#/quick">⚡ Práctica rápida · 5 minutos</a>
+        ${todayHtml(u)}
         <div class="quick">
           <a href="#/plan" class="quick-item">🗺️<small>Mi plan</small></a>
           <a href="#/verbs" class="quick-item">🔤<small>Verbos${Vb.dueVerbs(u).length ? ` <b class="badge">${Vb.dueVerbs(u).length}</b>` : ''}</small></a>
@@ -498,9 +502,9 @@
     if (nxt) $('#continue').addEventListener('click', () => go(`/lesson/${nxt.unit.id}/${nxt.type.id}`));
     $$('.node').forEach((b) => b.addEventListener('click', () => lessonSheet(b.dataset.unit, b.dataset.type, +b.dataset.i)));
     $$('[data-guide]').forEach((b) => b.addEventListener('click', () => guideModal(b.dataset.guide)));
-    // desplazar a la lección actual
-    const target = $('.node.next') || $(`#lvl-${u.level}`);
-    if (target) setTimeout(() => target.scrollIntoView({ block: 'center' }), 50);
+    bindToday(u);
+    // al volver de una lección: desplazar a la lección actual; si no, mostrar "Hoy" arriba
+    if (learnScroll) { learnScroll = false; const target = $('.node.next') || $(`#lvl-${u.level}`); if (target) setTimeout(() => target.scrollIntoView({ block: 'center' }), 50); }
   };
 
   function lessonSheet(unitId, typeId, i) {
@@ -582,6 +586,7 @@
       const prev = p.lessons[lid];
       p.lessons[lid] = { best: Math.max(prev ? prev.best : 0, r.score), stars: Math.max(prev ? prev.stars : 0, stars), attempts: (prev ? prev.attempts : 0) + 1, last: Date.now() };
       St.addXP(u, xp);
+      Eg.track(u, 'lessons', 1);
       p.minutesByDay[St.today()] = (p.minutesByDay[St.today()] || 0) + r.minutes;
       if (typeId === 'vocab' || typeId === 'review') St.learnWords(u, unit.vocab);
       levelUp = St.checkLevelUp(u);
@@ -611,7 +616,7 @@
           <button class="btn secondary" id="again">🔁 Repetir lección</button>
         </div>
       </div>`;
-    $('#next').addEventListener('click', () => go('/learn'));
+    $('#next').addEventListener('click', () => { learnScroll = true; go('/learn'); });
     $('#again').addEventListener('click', () => go(`/lesson/${unit.id}/${typeId}`));
     announceAchievements(got);
   }
@@ -648,13 +653,14 @@
 
   function practiceRun(exercises, title, extra = {}) {
     const u = St.user();
-    if (!exercises.length) { toast('No hay ejercicios disponibles todavía.'); return go('/practice'); }
+    const back = extra.back || '/practice';
+    if (!exercises.length) { toast('No hay ejercicios disponibles todavía.'); return go(back); }
     let finished = false;
     leaveGuard = () => finished || confirm('¿Salir de la práctica?');
     const hooks = lessonHooks(u);
     Ex.run(app, {
       mode: 'practice', exercises, settings: u.settings, hooks: { ...hooks, ...(extra.hooks || {}) },
-      onExit: () => { finished = true; go('/practice'); },
+      onExit: () => { finished = true; go(back); },
       onComplete: (r) => {
         finished = true; leaveGuard = null;
         let got = [];
@@ -665,7 +671,7 @@
           <div class="screen center result">
             <div class="mascot bounce">🦉</div><h2>${esc(title)} completado</h2>
             <div class="grid3 result-stats"><div class="rs xp"><small>XP</small><b>+${xp}</b></div><div class="rs acc"><small>Precisión</small><b>${r.score}%</b></div><div class="rs time"><small>Tiempo</small><b>${Math.max(1, Math.round(r.minutes))} min</b></div></div>
-            <div class="stack"><a class="btn" href="#/practice">Continuar</a></div>
+            <div class="stack"><a class="btn" href="#${back}">Continuar</a></div>
           </div>`;
         announceAchievements(got);
       }
@@ -701,7 +707,7 @@
       ...base,
       onResult: (ex, ok, retry) => {
         base.onResult(ex, ok, retry);
-        if (ex.verb && !retry) St.update((x) => Vb.record(x, ex.verb, ok));
+        if (ex.verb && !retry) St.update((x) => { Vb.record(x, ex.verb, ok); Eg.track(x, 'verbs', 1); });
       }
     };
   };
@@ -841,7 +847,7 @@
     const answer = (i, btn) => {
       if (over) return;
       const ok = i === q.answer;
-      St.update((x) => Vb.record(x, q.verb, ok));
+      St.update((x) => { Vb.record(x, q.verb, ok); Eg.track(x, 'verbs', 1); });
       $$('.tg-opt').forEach((b) => { b.disabled = true; });
       if (ok) { combo++; score += combo >= 5 ? 2 : 1; time = Math.min(60, time + 2); Sp.beep('ok'); btn.classList.add('good'); }
       else { combo = 0; Sp.beep('bad'); btn.classList.add('wrong'); $$('.tg-opt')[q.answer].classList.add('good'); misses.push(q); }
@@ -967,6 +973,7 @@
       onCoach: (ex, res) => {
         if (sink) sink.push({ sound: ex.sound, text: ex.text, kind: ex.kind, ok: res.ok, score: res.score, skipped: !!res.skipped });
         St.update((x) => {
+          if (!res.skipped) Eg.track(x, 'pron', 1);
           if (ex.kind === 'word') Pn.record(x, ex.sound, ex.text, res.ok);
           else (res.analysis.tagged || []).forEach((t) => Pn.record(x, t.sound, t.word, t.ok));
           if (ex.kind === 'twister' && !res.skipped) { const p = Pn.store(x); p.twisters[ex.sound] = Math.max(p.twisters[ex.sound] || 0, res.score); }
@@ -1098,6 +1105,113 @@
   }
 
 
+  /* ------------------ MOTIVACIÓN: eventos, tarjetas de "Hoy", cofre y práctica rápida ------------------ */
+  const Eg = window.Eng;
+  let engBusy = false, flushing = false, learnScroll = false;
+  const evQueue = [];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function engageCheck() {
+    if (engBusy || !St.user()) return;
+    engBusy = true;
+    try { let ev = []; St.update((x) => { ev = Eg.sync(x); }); evQueue.push(...ev); } finally { engBusy = false; }
+  }
+  const modalOpen = () => !!document.querySelector('.modal');
+  async function waitModalClosed() { while (modalOpen()) await sleep(250); }
+  async function showEvents(list) {
+    let refresh = false;
+    for (const e of list) {
+      if (e.type === 'quest') { toast(`<span class="big-emoji">🎯</span><div><b>¡Misión completada!</b><div>${esc(e.quest.text)} · +${e.quest.reward} XP</div></div>`, 2600); refresh = true; await sleep(2000); }
+      else if (e.type === 'chest') { toast(`<span class="big-emoji">🎁</span><div><b>¡Cofre diario listo!</b><div>Ábrelo en tu pantalla principal</div></div>`, 3000); refresh = true; await sleep(2200); }
+      else if (e.type === 'goal') { confetti(); toast(`<span class="big-emoji">🎉</span><div><b>¡Meta diaria cumplida!</b><div>${e.xp} XP hoy. ¡Excelente!</div></div>`, 3000); await sleep(2200); }
+      else if (e.type === 'rank') {
+        confetti(); Sp.beep('done');
+        modal(`<div class="center-text celebrate"><div class="big-emoji huge">${e.rank.icon}</div><h2>¡Subiste de rango!</h2><p class="lead2">Ahora eres <b>${esc(e.rank.name)}</b></p>
+          <p class="muted">${e.rank.next ? `Siguiente: ${e.rank.next.icon} ${esc(e.rank.next.name)} (a ${e.rank.toNext} XP)` : '¡Llegaste al rango máximo!'}</p><button class="btn" data-close>¡Genial!</button></div>`);
+        await sleep(500); await waitModalClosed();
+      } else if (e.type === 'streak') {
+        confetti(); Sp.beep('done');
+        modal(`<div class="center-text celebrate"><div class="big-emoji huge">🔥</div><h2>¡${e.days} días seguidos!</h2><p class="lead2">Practicar cada día es lo que más rápido te hace avanzar.</p>
+          <p><b>+${e.bonus} XP</b> de bonificación 🎁</p><button class="btn" data-close>¡Sigo adelante!</button></div>`);
+        await sleep(500); await waitModalClosed();
+      }
+    }
+    if (refresh && /^#\/learn|^$|^#$/.test(location.hash) && !modalOpen()) render();
+  }
+  setInterval(() => {
+    if (!evQueue.length || flushing || document.querySelector('.lesson') || modalOpen() || !St.user()) return;
+    flushing = true;
+    showEvents(evQueue.splice(0)).catch(() => {}).finally(() => { flushing = false; });
+  }, 1200);
+
+  function chestModal() {
+    modal(`<div class="center-text celebrate"><div class="big-emoji huge chest-shake" id="chest">🎁</div><h2>¡Cofre diario!</h2><p class="muted">Completaste las 3 misiones de hoy.</p><button class="btn" id="open">Abrir cofre</button><button class="btn ghost" data-close>Después</button></div>`, (m, close) => {
+      $('#open', m).addEventListener('click', () => {
+        let r = null;
+        St.update((x) => { r = Eg.openChest(x); });
+        if (!r) return close();
+        confetti(); Sp.beep('done');
+        $('.modal-card', m).innerHTML = `<div class="center-text celebrate"><div class="big-emoji huge">✨</div><h2>+${r.xp} XP</h2>${r.freeze ? '<p class="lead2">🛡️ ¡Ganaste un <b>protector de racha</b>!<br><span class="small muted">Si un día no puedes practicar, tu racha se salva.</span></p>' : '<p class="muted">¡Buen trabajo! Vuelve mañana por nuevas misiones.</p>'}<button class="btn" data-close>¡Gracias!</button></div>`;
+        $$('[data-close]', m).forEach((b) => b.addEventListener('click', () => { close(); render(); }));
+      });
+    });
+  }
+
+  function todayHtml(u) {
+    const s = Eg.streak(u), ql = Eg.quests(u), chest = Eg.chestState(u), w = Eg.wordOfDay(u);
+    const done = ql.filter((q) => q.done).length;
+    const risk = s.urgent ? `<div class="risk-banner"><span>🔥 ¡Tu racha de <b>${s.current} días</b> está en peligro! Con 5 minutos la salvas.</span><a class="btn small" href="#/quick">Practicar</a></div>` : '';
+    const msg = s.practicedToday ? `✅ ¡Hoy ya practicaste!${s.current >= 3 ? ' Sigue así 🔥' : ''}` : s.current > 0 ? `Practica hoy para llegar a ${s.current + 1} días` : s.best > 0 ? `Tu mejor racha fue de ${s.best} días. ¡Hoy empiezas una nueva!` : 'Practica hoy para empezar tu racha';
+    return `
+      ${risk}
+      <div class="card streak-card ${s.practicedToday ? 'ok' : ''}">
+        <div class="row between"><div><b class="xl">🔥 ${s.current}</b> <span class="muted">${s.current === 1 ? 'día' : 'días'} de racha</span></div>
+          <div class="small" title="Protectores de racha: salvan tu racha si un día no practicas">🛡️ ×${s.freezes}</div></div>
+        <div class="week-strip">${s.week.map((d) => `<div class="wd ${d.active ? 'on' : ''} ${d.today ? 'today' : ''}"><span>${d.label}</span><i>${d.active ? '🔥' : d.today ? '•' : ''}</i></div>`).join('')}</div>
+        <div class="small muted">${msg}</div>
+      </div>
+      <div class="card quests">
+        <div class="row between"><b>🎯 Misiones de hoy</b><span class="small muted">${done}/${ql.length}</span></div>
+        ${ql.map((q) => `<div class="quest ${q.done ? 'done' : ''}"><span class="q-ico">${q.icon}</span>
+          <div class="grow"><div class="q-text">${esc(q.text)}</div><div class="unit-bar"><div style="width:${Math.min(100, Math.round(100 * q.progress / q.target))}%"></div></div></div>
+          <small>${Math.min(q.progress, q.target)}/${q.target}</small><b>${q.done ? '✅' : '+' + q.reward}</b></div>`).join('')}
+        <button class="btn chest-btn ${chest}" id="chest-btn" ${chest === 'locked' ? 'disabled' : ''}>${chest === 'ready' ? '🎁 ¡Abrir el cofre del día!' : chest === 'opened' ? '🎁 Cofre abierto · vuelve mañana' : `🎁 Cofre: completa las ${ql.length} misiones`}</button>
+      </div>
+      <div class="card wod">
+        <div class="row gap"><div class="wod-emoji">${w.emoji}</div>
+          <div class="grow"><div class="small muted">📅 Palabra del día</div><b class="wod-word">${esc(w.en)}</b> <span class="muted">${esc(w.es)}</span>
+            ${w.example ? `<div class="small">“${esc(w.example)}”</div>` : ''}</div>
+          <button class="btn-speaker small" data-say="${esc(w.example || w.en)}">🔊</button></div>
+        ${w.learned || w.taken ? '<div class="small muted">✅ Ya está en tus tarjetas de repaso</div>' : `<button class="btn small secondary" id="wod-add">➕ Agregar a mis tarjetas (+2 XP)</button>`}
+      </div>`;
+  }
+  function bindToday(u) {
+    const cb = $('#chest-btn'); if (cb && !cb.disabled && cb.classList.contains('ready')) cb.addEventListener('click', chestModal);
+    const wa = $('#wod-add');
+    if (wa) wa.addEventListener('click', () => {
+      const w = Eg.wordOfDay(St.user());
+      St.update((x) => { St.learnWords(x, [[w.en, w.es, w.emoji]]); x.progress.wodTaken = St.today(); St.addXP(x, 2); });
+      wa.outerHTML = '<div class="small muted">✅ ¡Agregada! Aparecerá en tus repasos.</div>';
+    });
+    Ex.bindSpeakers($('.wod'));
+  }
+
+  routes.quick = () => {
+    const u = St.user();
+    const units = unlockedUnits(u);
+    const verbs = Vb.pickForSession(u, Vb.groupVerbs('basic'), 3);
+    const vEx = Vb.buildSession(verbs, 'mix').filter((e) => e.type === 'choice' || e.type === 'translate').slice(0, 4);
+    const vocab = Ls.practice('vocab', units).slice(0, 3);
+    const gram = Ls.practice('grammar', units).slice(0, 2);
+    const pr = Pn.dailySession(u).filter((e) => e.type === 'coach').slice(0, 2);
+    const ex = [...Ls.shuffle([...vocab, ...vEx, ...gram]), ...(speakingDisabled(u) || !Sp.canListen() ? [] : pr)];
+    const base = coachHooks(u, null);
+    practiceRun(ex, 'Práctica rápida', {
+      back: '/learn',
+      hooks: { ...base, onResult: (e, ok, retry) => { base.onResult(e, ok, retry); if (e.verb && !retry) St.update((x) => { Vb.record(x, e.verb, ok); Eg.track(x, 'verbs', 1); }); } }
+    });
+  };
+
+
   /* ------------------ TARJETAS (repetición espaciada) ------------------ */
   routes.flashcards = () => {
     const u = St.user();
@@ -1132,8 +1246,8 @@
       Ex.bindSpeakers(app);
       Sp.speak(en);
       $('#card').addEventListener('click', () => $('#card').classList.toggle('flipped'));
-      $('#yes').addEventListener('click', () => { St.update((x) => St.reviewWord(x, en, true)); known++; i++; Sp.beep('ok'); draw(); });
-      $('#no').addEventListener('click', () => { St.update((x) => St.reviewWord(x, en, false)); i++; draw(); });
+      $('#yes').addEventListener('click', () => { St.update((x) => { St.reviewWord(x, en, true); Eg.track(x, 'cards', 1); }); known++; i++; Sp.beep('ok'); draw(); });
+      $('#no').addEventListener('click', () => { St.update((x) => { St.reviewWord(x, en, false); Eg.track(x, 'cards', 1); }); i++; draw(); });
     };
     draw();
   };
@@ -1349,6 +1463,24 @@
       ${topbar(u)}
       <main class="screen page">
         <h2>Tu progreso</h2>
+        ${(() => {
+          const r = Eg.rank(p.xp), wk = Eg.weekStats(u), diff = wk.now.xp - wk.prev.xp;
+          const arrow = (a, b) => (a > b ? `<span class="win-t">▲ ${a - b}</span>` : a < b ? `<span class="muted">▼ ${b - a}</span>` : '');
+          return `
+          <div class="card rank-card"><div class="row gap"><div class="rank-ico">${r.icon}</div>
+            <div class="grow"><b>Rango: ${r.name}</b><div class="unit-bar thick"><div style="width:${r.pct}%"></div></div>
+            <div class="small muted">${r.next ? `${r.toNext} XP para ${r.next.icon} ${r.next.name}` : '¡Rango máximo alcanzado!'}</div></div></div></div>
+          <div class="card"><h4>📅 Esta semana</h4>
+            <div class="grid3 mini-stats">
+              <div><b>${wk.now.xp}</b><small>XP ${arrow(wk.now.xp, wk.prev.xp)}</small></div>
+              <div><b>${wk.now.active}/7</b><small>días activos</small></div>
+              <div><b>${wk.now.lessons}</b><small>lecciones</small></div>
+            </div>
+            <div class="unit-bar thick"><div style="width:${wk.pct}%"></div></div>
+            <div class="small muted">Meta semanal: ${wk.now.xp}/${wk.goal} XP · ${wk.now.minutes} min de estudio</div>
+            <p class="small">${diff > 0 ? `📈 ¡${diff} XP más que la semana pasada!` : wk.prev.xp > 0 ? `Te faltan ${-diff + 1} XP para superar la semana pasada. ¡Tú puedes! 💪` : '¡Sigue así para llenar tu primera semana!'}</p>
+          </div>`;
+        })()}
         <div class="card hero-card" style="--c:${L.color}">
           <div class="row between">
             <div><div class="muted small">Nivel certificado</div><b class="xl">${u.cefr || 'A0'}</b> <span class="muted">→ estudiando ${u.level}</span></div>
@@ -1860,6 +1992,7 @@
       if (!text || busy || ended) return;
       txt.value = ''; sugg.innerHTML = '';
       stats.turns++; if (spoken) stats.spoken++;
+      St.update((x) => Eg.track(x, 'tutor', 1));
       if (spoken) St.update((x) => { x.progress.speakCount++; });
       history.push({ role: 'user', content: text.slice(0, 500) });
       const meEl = addMe(text);
@@ -2037,7 +2170,7 @@
   };
 
   /* ------------------ INICIO ------------------ */
-  St.setOnChange(() => Cloud.scheduleSync());
+  St.setOnChange(() => { Cloud.scheduleSync(); engageCheck(); });
   render();
   syncOnStart();
   window.addEventListener('online', () => Cloud.scheduleSync());
