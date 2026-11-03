@@ -251,6 +251,7 @@ window.Store = (function () {
     tryU('verbs50', Object.values(p.verbs || {}).filter((v) => v.box >= 4).length >= 50);
     tryU('pron50', Object.values((p.pron || {}).words || {}).filter((w) => w.ok >= 1).length >= 50);
     tryU('twister', Object.values((p.pron || {}).twisters || {}).some((v) => v >= 80));
+    tryU('tenses5', !!window.Tenses && window.Tenses.TENSES.filter((t) => (((p.tenses || {})[t.id] || {}).hist || []).length >= 10 && window.Tenses.mastery(u, t.id) >= 80).length >= 5);
     tryU('social', Object.keys(u.friends || {}).length >= 1 || (u.cloudFriends || 0) > 0);
     return got;
   }

@@ -870,7 +870,8 @@ window.DATA = (function () {
     { id: 'social', icon: '🤝', name: 'En equipo', desc: 'Agrega a un amigo para comparar progreso' },
     { id: 'verbs50', icon: '🔤', name: 'Maestro de verbos', desc: 'Domina 50 verbos' },
     { id: 'pron50', icon: '🎙️', name: 'Voz clara', desc: 'Pronuncia bien 50 palabras distintas' },
-    { id: 'twister', icon: '🗣️', name: 'Trabalenguas', desc: 'Saca 80+ en un trabalenguas' }
+    { id: 'twister', icon: '🗣️', name: 'Trabalenguas', desc: 'Saca 80+ en un trabalenguas' },
+    { id: 'tenses5', icon: '⏰', name: 'Maestro de los tiempos', desc: 'Domina 5 tiempos verbales (80%+)' }
   ];
 
   const GOALS = [

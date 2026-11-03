@@ -716,8 +716,11 @@
     };
   };
 
-  routes.verbs = (sub, a, b) => {
+  routes.verbs = (sub, a, b, c) => {
     if (sub === 'ref') return verbsRef();
+    if (sub === 'game') return verbGame(a, b, c);
+    if (sub === 'tenses') return tenseGuide();
+    if (sub === 'daily') return verbDaily();
     if (sub === 'play') return verbsPlay(a, b);
     if (sub === 'time') return verbsTime(a);
     const u = St.user();
@@ -746,6 +749,19 @@
           </div>
           ${hard ? `<button class="btn small secondary" id="hard">❌ Practicar mis verbos difíciles (${hard})</button>` : ''}
         </div>
+        ${(() => {
+          const dd = ((u.progress.verbDaily || {})[St.today()] || { done: [] }).done.length;
+          const bests = u.progress.gameBest || {};
+          const lvlT = Tn.forLevel(u.level);
+          return `
+          <a class="card daily-verbs" href="#/verbs/daily"><div class="row gap"><span class="big-emoji">🏋️</span><div class="grow"><b>Entrenamiento diario de verbos</b><div class="small muted">3 juegos cortos elegidos para ti · ${Math.min(3, dd)}/3 hoy</div>
+            <div class="unit-bar"><div style="width:${Math.round(100 * Math.min(3, dd) / 3)}%"></div></div></div><span>▶</span></div></a>
+          <h3>🎮 Juegos de verbos</h3>
+          <div class="game-grid">${GAMES.map((g) => { const b = g.id === 'time' ? best : bests[g.id]; return `<button class="game-card" data-game="${g.id}"><span>${g.icon}</span><b>${g.name}</b><small>${g.desc}</small>${b ? `<em>🏆 ${b}</em>` : ''}</button>`; }).join('')}</div>
+          <h3>⏰ Tiempos verbales</h3>
+          <div class="card">${Tn.TENSES.map((t) => { const m = Tn.mastery(u, t.id), on = lvlT.includes(t); return `<div class="skill-line ${on ? '' : 'dim'}"><span>${t.icon} ${t.name}</span><div class="unit-bar"><div style="width:${m || 0}%"></div></div><b>${m == null ? '–' : m}</b></div>`; }).join('')}
+            <div class="row gap"><a class="btn small" href="#/verbs/tenses">📘 Guía de tiempos</a><button class="btn small secondary" data-game="ruleta">🎰 Ruleta</button></div></div>`;
+        })()}
         <h3>Practicar por grupo</h3>
         <div class="skill-list">${Vb.GROUPS.filter((g) => !['aaa', 'abb', 'aba', 'abc'].includes(g.id)).map(groupCard).join('')}</div>
         <h3>Irregulares por patrón</h3>
@@ -769,6 +785,7 @@
       </main>
       ${tabbar('practice')}`;
     $$('[data-g]').forEach((b) => b.addEventListener('click', () => verbModeModal(b.dataset.g)));
+    $$('[data-game]').forEach((b) => b.addEventListener('click', () => gameModal(b.dataset.game)));
     $('#review').addEventListener('click', () => go('/verbs/play/review/mix'));
     const h = $('#hard'); if (h) h.addEventListener('click', () => go('/verbs/play/hard/mix'));
   };
@@ -1308,6 +1325,433 @@
     });
   }
 
+
+  /* ------------------ JUEGOS DE VERBOS Y TIEMPOS ------------------ */
+  const Tn = window.Tenses;
+  const GAMES = [
+    { id: 'memo', icon: '🃏', name: 'Memorama', desc: 'Encuentra las parejas: verbo y su pasado, participio o significado', kind: 'verbs' },
+    { id: 'rain', icon: '🌧️', name: 'Lluvia de verbos', desc: 'Toca la forma correcta antes de que caiga', kind: 'verbs' },
+    { id: 'balloons', icon: '🎈', name: 'Salva los globos', desc: 'Adivina la forma letra por letra', kind: 'verbs' },
+    { id: 'letters', icon: '🧩', name: 'Letras revueltas', desc: 'Ordena las letras del verbo', kind: 'verbs' },
+    { id: 'tf', icon: '⚖️', name: '¿Verdadero o falso?', desc: '¿Están bien las 3 formas? Decide rápido', kind: 'verbs' },
+    { id: 'detective', icon: '🕵️', name: 'Detective de tiempos', desc: 'Usa la pista (yesterday, now, since…) para elegir el tiempo', kind: 'tenses' },
+    { id: 'ruleta', icon: '🎰', name: 'Ruleta de tiempos', desc: 'Gira y construye la frase: afirmativa, negativa o pregunta', kind: 'tenses' },
+    { id: 'time', icon: '⏱️', name: 'Contrarreloj', desc: '60 segundos de formas verbales', kind: 'verbs' }
+  ];
+  const gameOf = (id) => GAMES.find((g) => g.id === id);
+  /** Verbos para un juego: primero los que toca repasar, luego nuevos */
+  function verbPool(u, gid, n) {
+    const fallback = St.levelIndex(u.level) >= 2 ? 'inter' : 'basic';
+    let vs;
+    if (gid === 'review') vs = Vb.dueVerbs(u);
+    else if (gid === 'hard') vs = Vb.hardVerbs(u);
+    else vs = Vb.pickForSession(u, Vb.groupVerbs(Vb.GROUPS.some((g) => g.id === gid) ? gid : fallback), n);
+    if (vs.length < n) vs = [...vs, ...Vb.pickForSession(u, Vb.groupVerbs(fallback), n * 2).filter((v) => !vs.includes(v))];
+    return Ls.shuffle(vs.slice(0, n));
+  }
+  const recV = (base, ok) => St.update((x) => { Vb.record(x, base, ok); Eg.track(x, 'verbs', 1); });
+  const todayDaily = (x) => { const p = x.progress; p.verbDaily = p.verbDaily || {}; const k = St.today(); Object.keys(p.verbDaily).filter((d) => d !== k).forEach((d) => delete p.verbDaily[d]); return (p.verbDaily[k] = p.verbDaily[k] || { done: [] }); };
+
+  function gameModal(id) {
+    const g = gameOf(id), u = St.user();
+    let opts;
+    if (g.kind === 'tenses') {
+      const lvl = Tn.forLevel(u.level);
+      opts = [['level', `🎯 Mis tiempos (nivel ${u.level}): ${lvl.map((t) => t.icon).join(' ')}`], ['all', '📚 Todos los tiempos'],
+        ...Tn.TENSES.filter((t) => id !== 'detective' || Tn.CUES.some((c) => c.t === t.id)).map((t) => [t.id, `${t.icon} Solo ${t.name}`])];
+    } else {
+      const due = Vb.dueVerbs(u).length, hard = Vb.hardVerbs(u).length;
+      opts = [['review', `🧠 Repaso del día${due ? ` (${due})` : ''}`], ...(hard ? [['hard', `❌ Mis verbos difíciles (${hard})`]] : []),
+        ...Vb.GROUPS.filter((x) => !['aaa', 'abb', 'aba', 'abc', 'reg'].includes(x.id)).map((x) => [x.id, `${x.icon} ${x.name}`])];
+    }
+    modal(`<div class="center-text"><div class="big-emoji">${g.icon}</div><h3>${g.name}</h3><p class="muted small">${g.desc}</p></div>
+      <div class="stack">${opts.map(([v, l], i) => `<a class="btn ${i ? 'secondary' : ''} small" href="#/verbs/${id === 'time' ? `time/${v}` : `game/${id}/${v}`}">${esc(l)}</a>`).join('')}
+      <button class="btn ghost" data-close>Cancelar</button></div>`, (m, close) => $$('a', m).forEach((a) => a.addEventListener('click', close)));
+  }
+
+  /* ---- marco común de los juegos ---- */
+  function arcade(game, statHtml) {
+    const g = gameOf(game);
+    app.innerHTML = `<div class="screen arcade"><div class="arc-top"><a href="#/verbs" class="back">✕</a><b>${g.icon} ${g.name}</b><div class="arc-stat" id="arc-stat">${statHtml || ''}</div></div><div id="arc-body"></div></div>`;
+    return $('#arc-body');
+  }
+  function finishGame(o) {
+    leaveGuard = null;
+    const g = gameOf(o.game), n = o.results.length, okN = o.results.filter((r) => r.ok).length;
+    const xp = Math.min(45, 6 + okN * 2);
+    let got = [], record = false, dailyDone = false;
+    St.update((x) => {
+      St.addXP(x, xp);
+      const b = (x.progress.gameBest = x.progress.gameBest || {});
+      if (o.score != null && o.score > (b[o.game] || 0)) { b[o.game] = o.score; record = !!o.score; }
+      if (o.daily) { const d = todayDaily(x); if (!d.done.includes(o.game)) d.done.push(o.game); if (d.done.length >= 3 && !d.bonus) { d.bonus = true; St.addXP(x, 15); dailyDone = true; } }
+      got = St.checkAchievements(x);
+    });
+    Sp.beep('done'); if (n && okN / n >= 0.8) confetti();
+    const p = St.user().progress.verbs || {};
+    const uniq = [...new Map(o.results.filter((r) => r.base).map((r) => [r.base, r])).values()];
+    const tenseLine = o.tenses ? o.tenses.map((tid) => { const t = Tn.byId.get(tid), m = Tn.mastery(St.user(), tid); return `<div class="skill-line"><span>${t.icon} ${t.name}</span><div class="unit-bar"><div style="width:${m || 0}%"></div></div><b>${m == null ? '–' : m}</b></div>`; }).join('') : '';
+    app.innerHTML = `
+      <div class="screen page result">
+        <div class="center-text"><div class="mascot bounce">${g.icon}</div><h2>${record ? '¡Nuevo récord! 🏆' : '¡Juego terminado!'}</h2>
+          ${o.scoreLabel ? `<div class="tg-final">${o.score}</div><p class="muted">${o.scoreLabel}</p>` : ''}</div>
+        <div class="grid3 result-stats wide"><div class="rs xp"><small>XP</small><b>+${xp}${dailyDone ? '+15' : ''}</b></div><div class="rs acc"><small>Aciertos</small><b>${okN}/${n}</b></div><div class="rs time"><small>Verbos</small><b>${uniq.length}</b></div></div>
+        ${dailyDone ? '<div class="card center-text">🏋️ <b>¡Entrenamiento diario completo!</b> +15 XP de bonificación</div>' : ''}
+        ${tenseLine ? `<div class="card"><h4>Tu dominio de los tiempos</h4>${tenseLine}</div>` : ''}
+        ${uniq.length ? `<div class="card"><h4>Verbos de este juego</h4>${uniq.map((r) => { const v = Vb.byBase.get(r.base); if (!v) return ''; const box = (p[v.base] || {}).box || 0; return `<button class="verb-row" data-v="${v.base}"><span class="vdots">${'●'.repeat(Math.min(box, 6))}${'○'.repeat(Math.max(0, 6 - box))}</span><b>${v.base}</b><span>${esc(Vb.allForms(v))}</span></button>`; }).join('')}
+          <p class="small muted">● = memoria de cada verbo. Los que fallaste volverán pronto en tu repaso; los que aciertas, cada vez más espaciados para que no se olviden.</p></div>` : ''}
+        <div class="stack">${o.daily ? '<a class="btn" href="#/verbs/daily">▶ Siguiente paso del entrenamiento</a>' : `<a class="btn" href="#/verbs/${o.game === 'time' ? 'time' : 'game/' + o.game}/${o.gid}">🔁 Jugar otra vez</a>`}<a class="btn secondary" href="#/verbs">Volver a verbos</a></div>
+      </div>`;
+    $$('[data-v]').forEach((b) => b.addEventListener('click', () => verbDetail(b.dataset.v)));
+    announceAchievements(got);
+  }
+  function verbGame(game, gid, flag) {
+    const daily = flag === 'daily';
+    if (game === 'detective' || game === 'ruleta') return tenseRun(game, gid, daily);
+    const fn = { memo: gameMemo, rain: gameRain, balloons: gameBalloons, letters: gameLetters, tf: gameTF }[game];
+    if (!fn) return go('/verbs');
+    fn(gid || 'review', daily);
+  }
+
+  /* ---- 🃏 Memorama ---- */
+  function gameMemo(gid, daily) {
+    const u = St.user();
+    const modes = [['past', 'pasado'], ['pp', 'participio'], ['es', 'significado en español']];
+    const [mode, label] = modes[Math.floor(Math.random() * modes.length)];
+    const other = (v) => (mode === 'es' ? v.es.split(' / ')[0] : v[mode][0]);
+    const used = new Set(), verbs = [];
+    for (const v of verbPool(u, gid, 14)) {
+      const keys = [v.base, other(v)];
+      if (keys[0].toLowerCase() === keys[1].toLowerCase() || keys.some((k) => used.has(k.toLowerCase()))) continue;
+      keys.forEach((k) => used.add(k.toLowerCase())); verbs.push(v);
+      if (verbs.length === 6) break;
+    }
+    const cards = Ls.shuffle(verbs.flatMap((v, i) => [{ id: i, text: v.base, en: true }, { id: i, text: other(v), en: mode !== 'es' }]));
+    let open = [], matched = 0, moves = 0, over = false;
+    const missed = new Set(), results = [];
+    leaveGuard = () => over || confirm('¿Salir del juego?');
+    const body = arcade('memo');
+    const stat = () => { $('#arc-stat').textContent = `${matched}/${verbs.length} · ${moves} mov.`; };
+    body.innerHTML = `<p class="center-text small muted">Une cada verbo con su <b>${label}</b>. Toca dos cartas.</p>
+      <div class="memo-grid">${cards.map((c, k) => `<button class="memo-card" data-k="${k}"><span class="memo-back">?</span><span class="memo-front">${esc(c.text)}</span></button>`).join('')}</div>`;
+    stat();
+    $$('.memo-card', body).forEach((el) => el.addEventListener('click', () => {
+      const c = cards[+el.dataset.k];
+      if (over || el.classList.contains('flip') || open.length === 2) return;
+      el.classList.add('flip'); if (c.en) Sp.speak(c.text);
+      open.push({ el, c });
+      if (open.length < 2) return;
+      moves++;
+      const [a, b] = open;
+      if (a.c.id === b.c.id) {
+        a.el.classList.add('done'); b.el.classList.add('done'); matched++; open = [];
+        const v = verbs[a.c.id]; const ok = !missed.has(a.c.id);
+        recV(v.base, ok); results.push({ base: v.base, ok }); Sp.beep('ok');
+        setTimeout(() => Sp.speak(Vb.sayForms(v)), 400);
+        if (matched === verbs.length) { over = true; setTimeout(() => body.isConnected && finishGame({ game: 'memo', gid, daily, results, score: Math.max(10, 100 - (moves - verbs.length) * 8), scoreLabel: `puntos · ${moves} movimientos` }), 1200); }
+      } else {
+        missed.add(a.c.id); missed.add(b.c.id); Sp.beep('bad');
+        setTimeout(() => { a.el.classList.remove('flip'); b.el.classList.remove('flip'); open = []; }, 950);
+      }
+      stat();
+    }));
+  }
+
+  /* ---- 🌧️ Lluvia de verbos ---- */
+  function gameRain(gid, daily) {
+    const u = St.user(), pool = verbPool(u, gid, 12);
+    let lives = 3, score = 0, round = 0, raf = null, paused = true, over = false, q = null, drops = [], last = 0;
+    const results = [];
+    leaveGuard = () => over || confirm('¿Salir del juego?');
+    const body = arcade('rain');
+    body.innerHTML = `<div class="rain-q" id="rq"></div><div class="rain-field" id="rf"></div>`;
+    const field = $('#rf'), stat = () => { $('#arc-stat').textContent = `${'❤️'.repeat(lives)}${'🤍'.repeat(3 - lives)} ⭐ ${score}`; };
+    const stop = () => { paused = true; if (raf) cancelAnimationFrame(raf); };
+    const end = () => { over = true; stop(); finishGame({ game: 'rain', gid, daily, results, score, scoreLabel: 'formas atrapadas' }); };
+    function next() {
+      if (!$('#rf')) return stop();
+      if (lives <= 0 || round >= 15) return end();
+      round++;
+      q = Vb.quickQuestion(pool);
+      const correct = q.options[q.answer];
+      const opts = Ls.shuffle([correct, ...q.options.filter((o) => o !== correct).slice(0, 2)]);
+      const m = q.question.match(/^(.*) de "(.*)" \((.*)\)$/);
+      $('#rq').innerHTML = `<div class="tg-form">${esc(m[1])}</div><div class="tg-verb">${esc(m[2])}</div><div class="small muted">${esc(m[3])}</div>`;
+      field.innerHTML = '';
+      const lanes = Ls.shuffle([4, 36, 68]);
+      drops = opts.map((o, i) => {
+        const el = document.createElement('button');
+        el.className = 'drop'; el.textContent = o; el.style.left = lanes[i] + '%';
+        field.appendChild(el);
+        const d = { el, y: -50 - i * 70, ok: o === correct, text: o };
+        el.addEventListener('click', () => hit(d));
+        return d;
+      });
+      Sp.speak(q.say); stat();
+      paused = false; last = 0; raf = requestAnimationFrame(loop);
+    }
+    function resolve(ok, d) {
+      stop();
+      const correct = drops.find((x) => x.ok);
+      recV(q.verb, ok); results.push({ base: q.verb, ok });
+      if (ok) { score++; Sp.beep('ok'); d.el.classList.add('good'); Sp.speak(d.text); setTimeout(next, 650); }
+      else { lives--; Sp.beep('bad'); if (d) d.el.classList.add('wrong'); correct.el.classList.add('good'); Sp.speak(q.sayAfter); setTimeout(next, 1800); }
+      stat();
+    }
+    function hit(d) { if (paused || over) return; resolve(d.ok, d); }
+    function loop(ts) {
+      if (paused || !$('#rf')) return;
+      const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0; last = ts;
+      const h = field.clientHeight, speed = 55 + round * 7;
+      for (const d of drops) {
+        d.y += speed * dt; d.el.style.transform = `translateY(${d.y}px)`;
+        if (d.y > h - 44) { if (d.ok) return resolve(false, null); d.el.style.visibility = 'hidden'; }
+      }
+      raf = requestAnimationFrame(loop);
+    }
+    stat();
+    setTimeout(next, 400);
+  }
+
+  /* ---- 🎈 Salva los globos (adivina letra por letra) ---- */
+  function gameBalloons(gid, daily) {
+    const u = St.user(), pool = verbPool(u, gid, 5);
+    let i = 0, saved = 0, over = false;
+    const results = [];
+    leaveGuard = () => over || confirm('¿Salir del juego?');
+    const body = arcade('balloons');
+    function round() {
+      if (i >= pool.length) { over = true; document.removeEventListener('keydown', onKey); return finishGame({ game: 'balloons', gid, daily, results, score: saved, scoreLabel: 'globos salvados' }); }
+      const v = pool[i];
+      const forms = v.irregular ? ['past', 'pp'] : ['past', 'ing', 's'];
+      const f = forms[Math.floor(Math.random() * forms.length)];
+      const target = v[f][0].toLowerCase();
+      const guessed = new Set(); let lives = 6, done = false;
+      const draw = () => {
+        const won = [...target].every((ch) => guessed.has(ch));
+        body.innerHTML = `
+          <div class="center-text"><div class="tg-form">${esc(Vb.FORM_LABELS[f])} de</div><div class="tg-verb">${esc(v.base)} <button class="btn-speaker tiny" data-say="${esc(v.base)}">🔊</button></div><div class="small muted">${esc(v.es)} · palabra ${i + 1} de ${pool.length}</div></div>
+          <div class="balloons">${'🎈'.repeat(lives)}${'💥'.repeat(6 - lives)}</div>
+          <div class="slots">${[...target].map((ch) => `<span class="slot ${guessed.has(ch) || done ? 'on' : ''}">${guessed.has(ch) || done ? esc(ch) : ''}</span>`).join('')}</div>
+          ${done ? `<div class="card center-text"><b>${won ? `¡Salvaste ${lives} globos! 🎉` : `La respuesta era: ${esc(target)}`}</b><div class="small">${esc(Vb.allForms(v))}</div><button class="btn" id="nx">${i + 1 < pool.length ? 'Siguiente' : 'Ver resultado'}</button></div>`
+            : `<div class="kb">${'qwertyuiop asdfghjkl zxcvbnm'.split(' ').map((row) => `<div class="kb-row">${[...row].map((ch) => `<button class="kb-key ${guessed.has(ch) ? (target.includes(ch) ? 'good' : 'bad') : ''}" data-ch="${ch}" ${guessed.has(ch) ? 'disabled' : ''}>${ch}</button>`).join('')}</div>`).join('')}</div>
+               <button class="link-btn" id="hint">💡 Pista (cuesta un globo)</button>`}`;
+        Ex.bindSpeakers(body);
+        $('#arc-stat').textContent = `🎈 ${saved}`;
+        $$('.kb-key', body).forEach((b) => b.addEventListener('click', () => guess(b.dataset.ch)));
+        const h = $('#hint', body); if (h) h.addEventListener('click', () => { const miss = [...target].find((ch) => !guessed.has(ch)); if (miss && lives > 1) { lives--; guess(miss, true); } });
+        const nx = $('#nx', body); if (nx) nx.addEventListener('click', () => { i++; round(); });
+      };
+      const guess = (ch, hinted) => {
+        if (done || guessed.has(ch)) return;
+        guessed.add(ch);
+        if (!target.includes(ch)) { lives--; Sp.beep('bad'); } else if (!hinted) Sp.beep('ok');
+        const won = [...target].every((c) => guessed.has(c));
+        if (won || lives <= 0) {
+          done = true;
+          recV(v.base, won); results.push({ base: v.base, ok: won });
+          if (won) saved += lives;
+          setTimeout(() => Sp.speak(Vb.sayForms(v)), 250);
+        }
+        draw();
+      };
+      round.guess = guess;
+      draw();
+    }
+    const onKey = (e) => { if (!$('.kb') || !/^[a-z]$/i.test(e.key)) return; round.guess && round.guess(e.key.toLowerCase()); };
+    document.addEventListener('keydown', onKey);
+    round();
+  }
+
+  /* ---- 🧩 Letras revueltas ---- */
+  function gameLetters(gid, daily) {
+    const u = St.user(), pool = verbPool(u, gid, 8);
+    let i = 0, over = false;
+    const results = [];
+    leaveGuard = () => over || confirm('¿Salir del juego?');
+    const body = arcade('letters');
+    function round() {
+      if (i >= pool.length) { over = true; return finishGame({ game: 'letters', gid, daily, results, score: results.filter((r) => r.ok).length, scoreLabel: 'a la primera' }); }
+      const v = pool[i];
+      const forms = v.irregular ? ['past', 'pp'] : ['past', 'ing'];
+      const f = forms[Math.floor(Math.random() * forms.length)];
+      const target = v[f][0].toLowerCase();
+      let tiles = [...target].map((ch, k) => ({ ch, k }));
+      for (let t = 0; t < 5 && tiles.map((x) => x.ch).join('') === target && target.length > 2; t++) tiles = Ls.shuffle(tiles);
+      tiles = Ls.shuffle(tiles);
+      let built = [], first = true, solved = false;
+      const draw = (msg) => {
+        body.innerHTML = `
+          <div class="center-text"><div class="tg-form">${esc(Vb.FORM_LABELS[f])} de</div><div class="tg-verb">${esc(v.base)}</div><div class="small muted">${esc(v.es)} · ${i + 1} de ${pool.length}</div></div>
+          <div class="slots built">${[...target].map((_, k) => `<span class="slot ${built[k] ? 'on' : ''}" data-b="${k}">${built[k] ? esc(built[k].ch) : ''}</span>`).join('')}</div>
+          <div class="tiles">${tiles.map((t, k) => `<button class="tile ${built.includes(t) ? 'used' : ''}" data-t="${k}">${esc(t.ch)}</button>`).join('')}</div>
+          <div class="small center-text">${msg || 'Toca las letras en orden. Toca una letra de arriba para quitarla.'}</div>
+          <div class="row gap center"><button class="btn small secondary" id="hint">💡 Pista</button><button class="btn small ghost" id="skip">Saltar</button></div>`;
+        $$('.tile', body).forEach((b) => b.addEventListener('click', () => { const t = tiles[+b.dataset.t]; if (solved || built.includes(t) || built.length >= target.length) return; built.push(t); Sp.beep('click'); check(); }));
+        $$('.slots.built .slot', body).forEach((s) => s.addEventListener('click', () => { if (solved) return; built.splice(+s.dataset.b); draw(); }));
+        $('#hint', body).addEventListener('click', () => {
+          if (solved) return; first = false;
+          let k = 0; while (k < built.length && built[k].ch === target[k]) k++;
+          built = built.slice(0, k);
+          const t = tiles.find((x) => !built.includes(x) && x.ch === target[k]); if (t) built.push(t); check();
+        });
+        $('#skip', body).addEventListener('click', () => { if (solved) return; solved = true; recV(v.base, false); results.push({ base: v.base, ok: false }); Sp.speak(Vb.sayForms(v)); draw(`La respuesta: <b>${esc(target)}</b> · ${esc(Vb.allForms(v))}`); setTimeout(() => { i++; if (body.isConnected) round(); }, 2200); });
+      };
+      const check = () => {
+        if (built.length < target.length) return draw();
+        if (built.map((t) => t.ch).join('') === target) {
+          solved = true; recV(v.base, first); results.push({ base: v.base, ok: first }); Sp.beep('ok'); Sp.speak(Vb.sayForms(v));
+          draw(`✅ ¡Correcto! ${esc(Vb.allForms(v))}`); setTimeout(() => { i++; if (body.isConnected) round(); }, 1700);
+        } else { first = false; Sp.beep('bad'); built = []; draw('❌ Casi. Inténtalo otra vez.'); const s = $('.slots.built', body); if (s) s.classList.add('shake'); }
+      };
+      draw();
+      Sp.speak(v.base);
+    }
+    round();
+  }
+
+  /* ---- ⚖️ ¿Verdadero o falso? ---- */
+  function gameTF(gid, daily) {
+    const u = St.user(), pool = verbPool(u, gid, 15);
+    let score = 0, combo = 0, time = 45, timer = null, over = false, item = null, k = 0, busy = false;
+    const results = [];
+    leaveGuard = () => over || confirm('¿Salir del juego?');
+    const body = arcade('tf');
+    body.innerHTML = `<div class="tg-bar"><div id="tb"></div></div><p class="center-text small muted">¿Las tres formas (base – pasado – participio) son correctas?</p>
+      <div class="tf-card" id="tfc"></div><div class="tf-btns"><button class="btn danger" id="no">❌ Falso</button><button class="btn" id="yes">✅ Verdadero</button></div><div class="center-text small" id="tfmsg"></div>`;
+    const next = () => {
+      if (!$('#tfc')) return;
+      const v = pool[k++ % pool.length];
+      const truth = Math.random() < 0.5;
+      const forms = [v.base, v.past[0], v.pp[0]];
+      if (!truth) {
+        const f = Math.random() < 0.5 ? 'past' : 'pp', idx = f === 'past' ? 1 : 2;
+        const wrong = Vb.wrongCandidates(v, f).find((w) => w && ![...v.past, ...v.pp, v.base].includes(w) && /^[a-z]+$/.test(w));
+        if (wrong) forms[idx] = wrong;
+      }
+      item = { v, truth: forms[1] === v.past[0] && forms[2] === v.pp[0] };
+      $('#tfc').innerHTML = `<div class="tf-forms">${forms.map((x) => `<span>${esc(x)}</span>`).join('<i>–</i>')}</div><div class="small muted">${esc(v.es)}</div>`;
+      $('#tfmsg').textContent = '';
+      Sp.speak(forms.join(', '));
+    };
+    const answer = (yes) => {
+      if (over || busy) return;
+      const ok = yes === item.truth;
+      recV(item.v.base, ok); results.push({ base: item.v.base, ok });
+      if (ok) { combo++; score += combo >= 5 ? 2 : 1; Sp.beep('ok'); next(); }
+      else { combo = 0; Sp.beep('bad'); busy = true; $('#tfmsg').innerHTML = `Correcto: <b>${esc(Vb.allForms(item.v))}</b>`; Sp.speak(Vb.sayForms(item.v)); setTimeout(() => { busy = false; if (!over) next(); }, 1800); }
+      $('#arc-stat').textContent = `⭐ ${score}${combo >= 3 ? ` 🔥${combo}` : ''}`;
+    };
+    $('#yes').addEventListener('click', () => answer(true));
+    $('#no').addEventListener('click', () => answer(false));
+    const onKey = (e) => { if (!$('#tfc')) return document.removeEventListener('keydown', onKey); if (e.key === 'ArrowRight') answer(true); if (e.key === 'ArrowLeft') answer(false); };
+    document.addEventListener('keydown', onKey);
+    timer = setInterval(() => {
+      if (!$('#tb')) return clearInterval(timer);
+      time -= 0.1; $('#tb').style.width = `${Math.max(0, time / 45 * 100)}%`; $('#tb').classList.toggle('low', time < 8);
+      if (time <= 0) { clearInterval(timer); over = true; document.removeEventListener('keydown', onKey); finishGame({ game: 'tf', gid, daily, results, score, scoreLabel: 'puntos en 45 segundos' }); }
+    }, 100);
+    $('#arc-stat').textContent = '⭐ 0';
+    next();
+  }
+
+  /* ---- 🕵️ Detective y 🎰 Ruleta (tiempos verbales) ---- */
+  function tenseRun(game, arg, daily) {
+    const u = St.user();
+    const lvl = Tn.forLevel(u.level).map((t) => t.id);
+    let tids = arg === 'all' ? Tn.TENSES.map((t) => t.id) : Tn.byId.has(arg) ? [arg] : lvl;
+    if (game === 'detective') { tids = tids.filter((t) => Tn.CUES.some((c) => c.t === t)); if (!tids.length) tids = lvl.filter((t) => Tn.CUES.some((c) => c.t === t)); }
+    const pool = [...verbPool(u, St.levelIndex(u.level) >= 2 ? 'inter' : 'basic', 6), ...Vb.pickForSession(u, Vb.groupVerbs('regbasic'), 4)];
+    const results = [];
+    const run = (ex, used) => {
+      let finished = false;
+      leaveGuard = () => finished || confirm('¿Salir del juego?');
+      const base = lessonHooks(u);
+      Ex.run(app, {
+        mode: 'practice', exercises: ex, settings: u.settings,
+        hooks: { ...base, onResult: (e, ok, retry) => { base.onResult(e, ok, retry); if (retry) return; results.push({ base: e.verb, ok }); St.update((x) => { if (e.verb) Vb.record(x, e.verb, ok); Tn.record(x, e.tense, ok); Eg.track(x, 'verbs', 1); }); } },
+        onExit: () => { finished = true; go('/verbs'); },
+        onComplete: (r) => { finished = true; finishGame({ game, gid: arg || 'level', daily, results, tenses: used, score: r.score, scoreLabel: '% de precisión' }); }
+      });
+    };
+    if (game === 'detective') return run(Tn.detectiveSession(pool, tids, 10), tids);
+    // Ruleta: gira, muestra la fórmula del tiempo y luego practica
+    const chosen = tids.length > 1 ? Tn.weakest(u, tids.map((t) => Tn.byId.get(t))).id : tids[0];
+    const t = Tn.byId.get(chosen);
+    app.innerHTML = `<div class="screen center"><h2>🎰 Ruleta de tiempos</h2><div class="slot-machine"><div class="reel" id="reel">…</div></div><div id="spin-info"></div></div>`;
+    const names = Tn.TENSES.filter((x) => tids.includes(x.id) || tids.length === 1);
+    let n = 0, delay = 60;
+    const spin = () => {
+      const x = names[n++ % names.length];
+      const reel = $('#reel'); if (!reel) return;
+      reel.textContent = `${x.icon} ${x.name}`; Sp.beep('click');
+      if (delay < 320) { delay *= 1.18; setTimeout(spin, delay); return; }
+      reel.textContent = `${t.icon} ${t.name}`; reel.classList.add('landed'); Sp.beep('done');
+      const ex = Tn.conj(Vb.byBase.get('work'), chosen, 'she');
+      $('#spin-info').innerHTML = `<div class="card left"><p class="muted">${esc(t.use)}</p>
+        <div class="formula"><b>➕ Afirmativa:</b> ${esc(t.aff)}</div><div class="formula"><b>➖ Negativa:</b> ${esc(t.neg)}</div><div class="formula"><b>❓ Pregunta:</b> ${esc(t.q)}</div>
+        <p>Ejemplo: <b>${esc(ex.text)}</b> <button class="btn-speaker tiny" data-say="${esc(ex.text)}">🔊</button></p></div>
+        <button class="btn" id="go-ruleta">¡Construir frases!</button>`;
+      Ex.bindSpeakers($('#spin-info'));
+      $('#go-ruleta').addEventListener('click', () => run(Tn.ruletaSession(pool, chosen, u.level, 8), [chosen]));
+    };
+    spin();
+  }
+
+  /* ---- 📘 Guía de tiempos ---- */
+  let guideVerb = 'work';
+  function tenseGuide() {
+    const u = St.user(), li = St.levelIndex(u.level);
+    const v = Vb.byBase.get(guideVerb) || Vb.byBase.get('work');
+    const choices = ['work', 'go', 'eat', 'study', 'have', 'write', 'play', 'buy', 'speak', 'make'];
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <div class="page-head"><a href="#/verbs" class="back">←</a><h2>📘 Guía de tiempos</h2></div>
+        <p class="muted small">Cómo se forma cada tiempo, cuándo se usa y las palabras que lo delatan. Elige un verbo para ver los ejemplos:</p>
+        <div class="chips-row">${choices.map((c) => `<button class="chip-s ${c === v.base ? 'on' : ''}" data-gv="${c}">${c}</button>`).join('')}</div>
+        ${Tn.TENSES.map((t) => {
+          const m = Tn.mastery(u, t.id), locked = St.levelIndex(t.level) > li;
+          return `<details class="card left tense-card" ${t.id === 'ps' ? 'open' : ''}>
+            <summary><span class="big-emoji">${t.icon}</span> <b>${t.name}</b> <span class="level-badge sm" style="--c:${levelOf(t.level).color}">${t.level}</span>${m != null ? ` <span class="small muted">· dominio ${m}%</span>` : ''}${locked ? ' <span class="small muted">· más adelante</span>' : ''}</summary>
+            <p>${esc(t.use)}</p>
+            <div class="formula"><b>➕</b> ${esc(t.aff)}</div><div class="formula"><b>➖</b> ${esc(t.neg)}</div><div class="formula"><b>❓</b> ${esc(t.q)}</div>
+            <div class="small muted">Palabras pista: ${t.markers.map((x) => `<code>${esc(x)}</code>`).join(' ')}</div>
+            <table class="conj">${Tn.table(v, t.id).map((r) => `<tr>${['aff', 'neg', 'q'].map((k) => `<td><button class="link-say" data-say="${esc(r[k])}">${esc(r[k])}</button></td>`).join('')}</tr>`).join('')}</table>
+            <div class="row gap"><a class="btn small" href="#/verbs/game/ruleta/${t.id}">🎰 Practicar</a>${Tn.CUES.some((c) => c.t === t.id) ? `<a class="btn small secondary" href="#/verbs/game/detective/${t.id}">🕵️ Detective</a>` : ''}</div>
+          </details>`;
+        }).join('')}
+      </main>
+      ${tabbar('practice')}`;
+    Ex.bindSpeakers(app);
+    $$('[data-gv]').forEach((b) => b.addEventListener('click', () => { guideVerb = b.dataset.gv; tenseGuide(); }));
+  }
+
+  /* ---- 🏋️ Entrenamiento diario de verbos (5 minutos, 3 pasos) ---- */
+  function verbDaily() {
+    const u = St.user();
+    let d; St.update((x) => { d = todayDaily(x); if (!d.tense) d.tense = Tn.weakest(x, Tn.forLevel(x.level)).id; });
+    const t = Tn.byId.get(d.tense);
+    const steps = [
+      { game: 'memo', gid: 'review', title: 'Memorama de repaso', desc: 'Los verbos que estás por olvidar' },
+      { game: 'ruleta', gid: d.tense, title: `Ruleta: ${t.name}`, desc: 'Tu tiempo verbal más débil hoy' },
+      { game: 'balloons', gid: Vb.hardVerbs(u).length ? 'hard' : 'review', title: 'Salva los globos', desc: 'Escribe las formas difíciles' }
+    ];
+    const doneN = steps.filter((s) => d.done.includes(s.game)).length;
+    app.innerHTML = `
+      ${topbar(u)}
+      <main class="screen page">
+        <div class="page-head"><a href="#/verbs" class="back">←</a><h2>🏋️ Entrenamiento diario</h2></div>
+        <p class="muted">3 juegos cortos (unos 5 minutos) elegidos para ti: repasa lo que estás por olvidar, refuerza tu tiempo verbal más débil y escribe las formas difíciles.</p>
+        <div class="unit-bar thick"><div style="width:${Math.round(100 * doneN / 3)}%"></div></div><p class="small muted">${doneN}/3 completados${d.bonus ? ' · ✅ bonificación recibida' : ' · +15 XP al terminar los 3'}</p>
+        <div class="skill-list">${steps.map((s, k) => {
+          const done = d.done.includes(s.game), g = gameOf(s.game);
+          return `<a class="skill-row ${done ? 'done-step' : ''}" href="#/verbs/game/${s.game}/${s.gid}/daily"><span class="big-emoji">${done ? '✅' : g.icon}</span><div class="grow"><b>${k + 1}. ${esc(s.title)}</b><div class="small muted">${esc(s.desc)}</div></div><span>${done ? 'Repetir' : '▶'}</span></a>`;
+        }).join('')}</div>
+        ${doneN >= 3 ? '<div class="card center-text">🎉 <b>¡Entrenamiento de hoy completo!</b> Vuelve mañana: tus verbos aparecerán justo antes de que los olvides.</div>' : ''}
+      </main>
+      ${tabbar('practice')}`;
+  }
 
   /* ------------------ TARJETAS (repetición espaciada) ------------------ */
   routes.flashcards = () => {

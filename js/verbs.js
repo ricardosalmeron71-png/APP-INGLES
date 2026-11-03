@@ -258,5 +258,5 @@ window.Verbs = (function () {
     return choiceEx(v, f);
   }
 
-  return { sayForms, list, byBase, conjugate, search, GROUPS, groupVerbs, record, stats, dueVerbs, hardVerbs, pickForSession, buildSession, quickQuestion, FORM_LABELS, allForms, edSound, gerund, regularPast, third };
+  return { wrongCandidates, sayForms, list, byBase, conjugate, search, GROUPS, groupVerbs, record, stats, dueVerbs, hardVerbs, pickForSession, buildSession, quickQuestion, FORM_LABELS, allForms, edSound, gerund, regularPast, third };
 })();
