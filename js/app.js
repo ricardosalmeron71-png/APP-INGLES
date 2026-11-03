@@ -98,9 +98,15 @@
     window.scrollTo(0, 0);
     (routes[name || 'welcome'] || routes.learn)(...params);
   }
+  let curHash = location.hash;
   window.addEventListener('hashchange', () => {
-    if (leaveGuard && !leaveGuard()) return;
+    if (leaveGuard && !leaveGuard()) {
+      // se quedó en la pantalla: restaurar la dirección para que el botón que tocó vuelva a funcionar
+      history.replaceState(null, '', curHash || '#/learn');
+      return;
+    }
     leaveGuard = null;
+    curHash = location.hash;
     render();
   });
 
@@ -868,7 +874,7 @@
     const answer = (i, btn) => {
       if (over) return;
       const ok = i === q.answer;
-      St.update((x) => { Vb.record(x, q.verb, ok); Eg.track(x, 'verbs', 1); });
+      St.update((x) => { Eg.track(x, 'verbs', 1); });
       $$('.tg-opt').forEach((b) => { b.disabled = true; });
       if (ok) { combo++; score += combo >= 5 ? 2 : 1; time = Math.min(60, time + 2); Sp.beep('ok'); btn.classList.add('good'); }
       else { combo = 0; Sp.beep('bad'); btn.classList.add('wrong'); $$('.tg-opt')[q.answer].classList.add('good'); misses.push(q); }
@@ -1349,7 +1355,8 @@
     if (vs.length < n) vs = [...vs, ...Vb.pickForSession(u, Vb.groupVerbs(fallback), n * 2).filter((v) => !vs.includes(v))];
     return Ls.shuffle(vs.slice(0, n));
   }
-  const recV = (base, ok) => St.update((x) => { Vb.record(x, base, ok); Eg.track(x, 'verbs', 1); });
+  /* Los juegos son para practicar: no suman al dominio de los verbos (eso solo lo hacen el repaso y las prácticas) */
+  const recV = () => St.update((x) => { Eg.track(x, 'verbs', 1); });
   const todayDaily = (x) => { const p = x.progress; p.verbDaily = p.verbDaily || {}; const k = St.today(); Object.keys(p.verbDaily).filter((d) => d !== k).forEach((d) => delete p.verbDaily[d]); return (p.verbDaily[k] = p.verbDaily[k] || { done: [] }); };
 
   function gameModal(id) {
@@ -1388,7 +1395,6 @@
       got = St.checkAchievements(x);
     });
     Sp.beep('done'); if (n && okN / n >= 0.8) confetti();
-    const p = St.user().progress.verbs || {};
     const uniq = [...new Map(o.results.filter((r) => r.base).map((r) => [r.base, r])).values()];
     const tenseLine = o.tenses ? o.tenses.map((tid) => { const t = Tn.byId.get(tid), m = Tn.mastery(St.user(), tid); return `<div class="skill-line"><span>${t.icon} ${t.name}</span><div class="unit-bar"><div style="width:${m || 0}%"></div></div><b>${m == null ? '–' : m}</b></div>`; }).join('') : '';
     app.innerHTML = `
@@ -1398,8 +1404,8 @@
         <div class="grid3 result-stats wide"><div class="rs xp"><small>XP</small><b>+${xp}${dailyDone ? '+15' : ''}</b></div><div class="rs acc"><small>Aciertos</small><b>${okN}/${n}</b></div><div class="rs time"><small>Verbos</small><b>${uniq.length}</b></div></div>
         ${dailyDone ? '<div class="card center-text">🏋️ <b>¡Entrenamiento diario completo!</b> +15 XP de bonificación</div>' : ''}
         ${tenseLine ? `<div class="card"><h4>Tu dominio de los tiempos</h4>${tenseLine}</div>` : ''}
-        ${uniq.length ? `<div class="card"><h4>Verbos de este juego</h4>${uniq.map((r) => { const v = Vb.byBase.get(r.base); if (!v) return ''; const box = (p[v.base] || {}).box || 0; return `<button class="verb-row" data-v="${v.base}"><span class="vdots">${'●'.repeat(Math.min(box, 6))}${'○'.repeat(Math.max(0, 6 - box))}</span><b>${v.base}</b><span>${esc(Vb.allForms(v))}</span></button>`; }).join('')}
-          <p class="small muted">● = memoria de cada verbo. Los que fallaste volverán pronto en tu repaso; los que aciertas, cada vez más espaciados para que no se olviden.</p></div>` : ''}
+        ${uniq.length ? `<div class="card"><h4>Verbos de este juego</h4>${uniq.map((r) => { const v = Vb.byBase.get(r.base); if (!v) return ''; const mark = o.results.filter((x) => x.base === v.base).every((x) => x.ok) ? '✅' : '❌'; return `<button class="verb-row" data-v="${v.base}"><span class="vdots">${mark}</span><b>${v.base}</b><span>${esc(Vb.allForms(v))}</span></button>`; }).join('')}
+          <p class="small muted">🎮 Los juegos son práctica libre: no cambian tu dominio de los verbos. Para subirlo usa el <b>🧠 Repaso del día</b> y las prácticas por grupo.</p></div>` : ''}
         <div class="stack">${o.daily ? '<a class="btn" href="#/verbs/daily">▶ Siguiente paso del entrenamiento</a>' : `<a class="btn" href="#/verbs/${o.game === 'time' ? 'time' : 'game/' + o.game}/${o.gid}">🔁 Jugar otra vez</a>`}<a class="btn secondary" href="#/verbs">Volver a verbos</a></div>
       </div>`;
     $$('[data-v]').forEach((b) => b.addEventListener('click', () => verbDetail(b.dataset.v)));
@@ -1669,7 +1675,7 @@
       const base = lessonHooks(u);
       Ex.run(app, {
         mode: 'practice', exercises: ex, settings: u.settings,
-        hooks: { ...base, onResult: (e, ok, retry) => { base.onResult(e, ok, retry); if (retry) return; results.push({ base: e.verb, ok }); St.update((x) => { if (e.verb) Vb.record(x, e.verb, ok); Tn.record(x, e.tense, ok); Eg.track(x, 'verbs', 1); }); } },
+        hooks: { ...base, onResult: (e, ok, retry) => { base.onResult(e, ok, retry); if (retry) return; results.push({ base: e.verb, ok }); St.update((x) => { Tn.record(x, e.tense, ok); Eg.track(x, 'verbs', 1); }); } },
         onExit: () => { finished = true; go('/verbs'); },
         onComplete: (r) => { finished = true; finishGame({ game, gid: arg || 'level', daily, results, tenses: used, score: r.score, scoreLabel: '% de precisión' }); }
       });
@@ -2162,7 +2168,7 @@
     level: { name: 'Nivel', unit: '', val: (x) => St.levelIndex(x.l) * 1000 + (x.lp[St.levelIndex(x.l)] || 0) + (x.c === x.l ? 100 : 0), show: true },
     streak: { name: 'Racha', unit: '🔥', val: (x) => x.s }
   };
-  let rankSort = 'week', rankScope = 'friends', rankReq = 0;
+  let rankSort = 'week', rankScope = 'friends', rankScopeChosen = false, rankReq = 0;
 
   routes.community = () => {
     const u = St.user();
@@ -2188,7 +2194,7 @@
     $('#share').addEventListener('click', shareModal);
     $('#addf').addEventListener('click', addFriendModal);
     $$('[data-sort]').forEach((b) => b.addEventListener('click', () => { rankSort = b.dataset.sort; render(); }));
-    $$('[data-scope]').forEach((b) => b.addEventListener('click', () => { rankScope = b.dataset.scope; render(); }));
+    $$('[data-scope]').forEach((b) => b.addEventListener('click', () => { rankScope = b.dataset.scope; rankScopeChosen = true; render(); }));
     loadRanking(u, cloud);
   };
 
@@ -2197,9 +2203,15 @@
     let list = St.community(u), note = '';
     if (cloud) {
       try {
+        if (rankScope === 'friends' && !rankScopeChosen && !list.some((x) => !x.me)) {
+          // sin amigos todavía: mostrar el ranking global para que vea a las demás personas
+          const fr = await Cloud.friends(u);
+          if (req !== rankReq) return;
+          if (!fr.length) { rankScope = 'global'; $$('[data-scope]').forEach((b) => b.classList.toggle('on', b.dataset.scope === 'global')); }
+        }
         if (rankScope === 'global') {
           const rows = await Cloud.leaderboard(u, rankSort);
-          list = rows.map((r) => fromCloudRow(r, u)).filter(Boolean);
+          list = rows.filter((r) => r.id === u.cloud.uid || (r.summary && r.summary.v === 1)).map((r) => fromCloudRow(r, u)).filter(Boolean);
           if (!list.some((x) => x.me)) list.push({ ...St.summary(u), me: true, src: 'me', outside: true });
           note = 'Ranking global: personas que eligieron aparecer en público.';
         } else {
@@ -2210,7 +2222,7 @@
           list = list.filter((x) => !(x.src === 'friend' && liveIds.has(x.id)));
           live.forEach((x) => { if (!localIds.has(x.lid)) list.push(x); });
         }
-      } catch (e) { note = `⚠️ ${esc(e.message)} Mostrando datos guardados en el teléfono.`; }
+      } catch (e) { note = `⚠️ ${esc(e.message)} Mostrando datos guardados en el teléfono.`; if (e.status === 401) setTimeout(render, 0); }
     }
     if (req !== rankReq || !$('#rlist')) return;
     const sorter = RANK_SORTS[rankSort];

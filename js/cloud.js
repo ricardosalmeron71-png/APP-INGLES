@@ -14,14 +14,19 @@ window.Cloud = (function () {
 
   async function request(path, { method = 'GET', body, token, headers = {} } = {}) {
     let res;
+    // si la red se queda colgada, no esperar para siempre
+    const ctrl = window.AbortController ? new AbortController() : null;
+    const tm = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
     try {
       res = await fetch(URL_ + path, {
+        signal: ctrl ? ctrl.signal : undefined,
         method,
         // Las claves nuevas de Supabase (sb_publishable_...) no van en Authorization: solo el token del usuario.
         headers: { apikey: KEY, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
         body: body === undefined ? undefined : JSON.stringify(body)
       });
-    } catch (e) { throw new CloudError('Sin conexión a internet.', 0); }
+    } catch (e) { clearTimeout(tm); throw new CloudError(e && e.name === 'AbortError' ? 'La conexión tardó demasiado. Intenta de nuevo.' : 'Sin conexión a internet.', 0); }
+    clearTimeout(tm);
     const text = await res.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
@@ -65,12 +70,20 @@ window.Cloud = (function () {
   }
 
   /** Token válido para el usuario (lo renueva si está por vencer). */
+  let refreshing = null;
   async function token(u) {
-    const c = u.cloud;
+    const cur = window.Store.user();
+    const c = (cur && cur.id === u.id && cur.cloud) || u.cloud;
     if (c.access_token && c.expires_at - Date.now() > 60000) return c.access_token;
+    // una sola renovación a la vez (cada token de renovación sirve una sola vez)
+    if (!refreshing) refreshing = doRefresh(c).finally(() => { refreshing = null; });
+    return refreshing;
+  }
+  async function doRefresh(c) {
     let d;
     try { d = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: c.refresh_token } }); }
     catch (e) {
+      if (!e.status) throw e; // sin conexión: no es que la sesión haya expirado
       if (e.status === 400 || e.status === 401) window.Store.update((x) => { if (x.cloud) x.cloud.refresh_token = null; });
       throw new CloudError('Tu sesión en la nube expiró. Vuelve a conectarla en Perfil.', 401);
     }
