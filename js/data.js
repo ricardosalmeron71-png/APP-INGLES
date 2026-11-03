@@ -813,41 +813,41 @@ window.DATA = (function () {
     {
       id: 'cafe', level: 'A1', title: 'En la cafetería', icon: '☕',
       turns: [
-        { bot: 'Hi! What can I get for you?', es: '¡Hola! ¿Qué te sirvo?', o: ["Can I have a coffee, please?", 'I am a coffee.', 'Yes, I can.'], a: 0 },
-        { bot: 'Sure. Small, medium or large?', es: 'Claro. ¿Pequeño, mediano o grande?', o: ['Yes, please.', 'Medium, please.', 'I am medium.'], a: 1 },
-        { bot: 'Would you like anything to eat?', es: '¿Quieres algo de comer?', o: ['No, thank you.', 'I eat yesterday.', 'Is good.'], a: 0 },
-        { bot: "That's four dollars, please.", es: 'Son cuatro dólares, por favor.', o: ['Here you are.', 'You are welcome.', 'Goodbye, coffee.'], a: 0 },
-        { bot: 'Thank you! Have a nice day!', es: '¡Gracias! ¡Que tengas un buen día!', o: ['You too!', 'Me too!', 'Yes, I have.'], a: 0 }
+        { bot: 'Hi! What can I get for you?', es: '¡Hola! ¿Qué te sirvo?', o: ["Can I have a coffee, please?", 'I am a coffee.', 'Yes, I can.'], a: 0, why: ['', '"I am a coffee" significa "Yo soy un café". Para pedir algo se dice "Can I have…?" o "I\'d like…".', '"Yes, I can" responde a una pregunta de sí/no, pero te preguntaron qué quieres.'] },
+        { bot: 'Sure. Small, medium or large?', es: 'Claro. ¿Pequeño, mediano o grande?', o: ['Yes, please.', 'Medium, please.', 'I am medium.'], a: 1, why: ['Te preguntaron qué tamaño quieres: hay que elegir uno, no responder "sí".', '', '"I am medium" significa "Yo soy mediano". Solo di el tamaño: "Medium, please".'] },
+        { bot: 'Would you like anything to eat?', es: '¿Quieres algo de comer?', o: ['No, thank you.', 'I eat yesterday.', 'Is good.'], a: 0, why: ['', 'Mezcla presente con "yesterday" (ayer) y no responde la pregunta. Para rechazar algo con cortesía: "No, thank you".', 'En inglés siempre hace falta el sujeto: "It is good". Además no responde la pregunta.'] },
+        { bot: "That's four dollars, please.", es: 'Son cuatro dólares, por favor.', o: ['Here you are.', 'You are welcome.', 'Goodbye, coffee.'], a: 0, why: ['', '"You are welcome" significa "De nada": se usa cuando alguien te da las gracias.', 'No tiene sentido despedirse del café 🙂. Al pagar se dice "Here you are" (Aquí tiene).'] },
+        { bot: 'Thank you! Have a nice day!', es: '¡Gracias! ¡Que tengas un buen día!', o: ['You too!', 'Me too!', 'Yes, I have.'], a: 0, why: ['', '"Me too" significa "Yo también" (para compartir un gusto o sentimiento). Para devolver un buen deseo se dice "You too!".', '"Have a nice day" es un deseo, no una pregunta: no se responde "Yes, I have".'] }
       ]
     },
     {
       id: 'hotel', level: 'A2', title: 'Registro en el hotel', icon: '🏨',
       turns: [
-        { bot: 'Good evening. Do you have a reservation?', es: 'Buenas noches. ¿Tiene una reservación?', o: ['Yes, under the name Garcia.', 'Yes, I reserve.', 'No, I am reservation.'], a: 0 },
-        { bot: 'How many nights are you staying?', es: '¿Cuántas noches se va a quedar?', o: ['Three nights.', 'At night.', 'Yes, I stay.'], a: 0 },
-        { bot: 'Can I see your passport, please?', es: '¿Puedo ver su pasaporte, por favor?', o: ['Of course, here it is.', 'I see it.', 'No passport is.'], a: 0 },
-        { bot: 'Breakfast is served from seven to ten.', es: 'El desayuno se sirve de siete a diez.', o: ['Great. Where is the restaurant?', 'I serve breakfast.', 'Seven is ten.'], a: 0 },
-        { bot: "It's on the first floor. Enjoy your stay!", es: 'Está en el primer piso. ¡Disfrute su estancia!', o: ['Thank you very much.', 'You enjoy.', 'Yes, floor.'], a: 0 }
+        { bot: 'Good evening. Do you have a reservation?', es: 'Buenas noches. ¿Tiene una reservación?', o: ['Yes, under the name Garcia.', 'Yes, I reserve.', 'No, I am reservation.'], a: 0, why: ['', '"I reserve" está en presente y suena incompleto. Lo natural es "Yes, I have a reservation" o "under the name…".', '"I am reservation" significa "Yo soy reservación". Sería "No, I don\'t have one".'] },
+        { bot: 'How many nights are you staying?', es: '¿Cuántas noches se va a quedar?', o: ['Three nights.', 'At night.', 'Yes, I stay.'], a: 0, why: ['', '"At night" significa "de noche": no dice cuántas noches.', 'Te preguntaron "cuántas" (how many): se responde con un número, no con "yes".'] },
+        { bot: 'Can I see your passport, please?', es: '¿Puedo ver su pasaporte, por favor?', o: ['Of course, here it is.', 'I see it.', 'No passport is.'], a: 0, why: ['', '"I see it" significa "Lo veo": no entregas el pasaporte.', 'La frase no tiene sentido en inglés; el orden correcto sería "There is no passport".'] },
+        { bot: 'Breakfast is served from seven to ten.', es: 'El desayuno se sirve de siete a diez.', o: ['Great. Where is the restaurant?', 'I serve breakfast.', 'Seven is ten.'], a: 0, why: ['', '"I serve breakfast" significa "Yo sirvo el desayuno": confundes quién lo sirve.', '"Seven is ten" (siete es diez) no tiene sentido.'] },
+        { bot: "It's on the first floor. Enjoy your stay!", es: 'Está en el primer piso. ¡Disfrute su estancia!', o: ['Thank you very much.', 'You enjoy.', 'Yes, floor.'], a: 0, why: ['', '"You enjoy" suena a orden y es incorrecto. Ante un buen deseo se agradece: "Thank you".', '"Yes, floor" no es una respuesta natural ni completa.'] }
       ]
     },
     {
       id: 'interview', level: 'B1', title: 'Entrevista de trabajo', icon: '💼',
       turns: [
-        { bot: 'Thanks for coming. Could you tell me a bit about yourself?', es: 'Gracias por venir. ¿Podría hablarme un poco de usted?', o: ["Sure. I've worked in marketing for five years.", 'I am work in marketing since five years.', 'Yes, I could.'], a: 0 },
-        { bot: 'Why do you want to work here?', es: '¿Por qué quiere trabajar aquí?', o: ["Because I admire your company's values.", 'Because yes.', 'I want work here because money.'], a: 0 },
-        { bot: 'What is your greatest strength?', es: '¿Cuál es su mayor fortaleza?', o: ["I'm very organised and I work well in a team.", 'My strength is strong.', 'I have many strengths since years.'], a: 0 },
-        { bot: 'Have you ever dealt with a difficult customer?', es: '¿Alguna vez ha tratado con un cliente difícil?', o: ['Yes. I listened carefully and found a solution.', 'Yes, I have deal yesterday.', 'Never I have.'], a: 0 },
-        { bot: 'Do you have any questions for us?', es: '¿Tiene alguna pregunta para nosotros?', o: ['Yes, what would a typical day look like?', 'No questions are.', 'Yes, how much you pay?'], a: 0 }
+        { bot: 'Thanks for coming. Could you tell me a bit about yourself?', es: 'Gracias por venir. ¿Podría hablarme un poco de usted?', o: ["Sure. I've worked in marketing for five years.", 'I am work in marketing since five years.', 'Yes, I could.'], a: 0, why: ['', 'Dos errores: "I am work" (no se combinan am + work) y "since five years" (con duración se usa "for"). Correcto: "I\'ve worked… for five years".', '"Could you tell me…" es una petición: debes contar algo sobre ti, no solo decir "sí, podría".'] },
+        { bot: 'Why do you want to work here?', es: '¿Por qué quiere trabajar aquí?', o: ["Because I admire your company's values.", 'Because yes.', 'I want work here because money.'], a: 0, why: ['', '"Because yes" es una traducción literal de "porque sí": en inglés no se usa y en una entrevista suena mal.', 'Falta "to": "I want TO work". Además "because money" necesita "of" y suena poco profesional.'] },
+        { bot: 'What is your greatest strength?', es: '¿Cuál es su mayor fortaleza?', o: ["I'm very organised and I work well in a team.", 'My strength is strong.', 'I have many strengths since years.'], a: 0, why: ['', '"My strength is strong" (mi fuerza es fuerte) no dice nada sobre ti.', '"since years" es incorrecto (sería "for years") y no menciona ninguna fortaleza.'] },
+        { bot: 'Have you ever dealt with a difficult customer?', es: '¿Alguna vez ha tratado con un cliente difícil?', o: ['Yes. I listened carefully and found a solution.', 'Yes, I have deal yesterday.', 'Never I have.'], a: 0, why: ['', 'Con "yesterday" se usa pasado simple ("I dealt"), no "have deal". Además "deal" no es el participio (es "dealt").', 'El orden correcto es "I have never…"; "Never I have" no es correcto aquí.'] },
+        { bot: 'Do you have any questions for us?', es: '¿Tiene alguna pregunta para nosotros?', o: ['Yes, what would a typical day look like?', 'No questions are.', 'Yes, how much you pay?'], a: 0, why: ['', '"No questions are" no es una frase correcta. Sería "No, I don\'t have any questions".', 'Falta el auxiliar: "How much DO you pay?". Además preguntar directo por el sueldo suena brusco.'] }
       ]
     },
     {
       id: 'complaint', level: 'B2', title: 'Hacer una reclamación', icon: '📞',
       turns: [
-        { bot: 'Customer service, how may I help you?', es: 'Servicio al cliente, ¿en qué puedo ayudarle?', o: ["I'm calling about an order that hasn't arrived.", 'I call because my order not arrive.', 'Help me now.'], a: 0 },
-        { bot: 'I apologise for that. Could you give me the order number?', es: 'Lo siento. ¿Podría darme el número de pedido?', o: ["Certainly, it's 4-5-8-2-1.", 'Yes, I could.', 'The number is big.'], a: 0 },
-        { bot: 'It seems it was sent to the wrong address.', es: 'Parece que fue enviado a la dirección equivocada.', o: ["That's frustrating. What can be done about it?", 'Is not my problem.', 'Wrong is the address.'], a: 0 },
-        { bot: 'We can send a replacement or offer a full refund.', es: 'Podemos enviar un reemplazo u ofrecer un reembolso completo.', o: ["I'd prefer a refund, if that's possible.", 'I prefer that you refund me money yesterday.', 'Both, please, now.'], a: 0 },
-        { bot: 'Done. The refund will be processed within five days.', es: 'Listo. El reembolso se procesará en cinco días.', o: ['Thank you for sorting it out so quickly.', 'Five days is many.', 'OK, bye bye bye.'], a: 0 }
+        { bot: 'Customer service, how may I help you?', es: 'Servicio al cliente, ¿en qué puedo ayudarle?', o: ["I'm calling about an order that hasn't arrived.", 'I call because my order not arrive.', 'Help me now.'], a: 0, why: ['', 'Para algo que pasa ahora se usa "I\'m calling". El negativo necesita auxiliar: "hasn\'t arrived" / "didn\'t arrive".', '"Help me now" es una orden: suena muy grosero en inglés.'] },
+        { bot: 'I apologise for that. Could you give me the order number?', es: 'Lo siento. ¿Podría darme el número de pedido?', o: ["Certainly, it's 4-5-8-2-1.", 'Yes, I could.', 'The number is big.'], a: 0, why: ['', 'Es una petición: hay que dar el número, no solo decir "sí, podría".', '"The number is big" (el número es grande) no da la información pedida.'] },
+        { bot: 'It seems it was sent to the wrong address.', es: 'Parece que fue enviado a la dirección equivocada.', o: ["That's frustrating. What can be done about it?", 'Is not my problem.', 'Wrong is the address.'], a: 0, why: ['', 'Falta el sujeto: "It is not my problem". Y suena poco educado para resolver algo.', 'El orden correcto sería "The address is wrong", y no ayuda a resolver el problema.'] },
+        { bot: 'We can send a replacement or offer a full refund.', es: 'Podemos enviar un reemplazo u ofrecer un reembolso completo.', o: ["I'd prefer a refund, if that's possible.", 'I prefer that you refund me money yesterday.', 'Both, please, now.'], a: 0, why: ['', 'Usa "yesterday" (ayer) para algo futuro y la estructura no es natural. Lo correcto: "I\'d prefer a refund".', 'Pedir "ambos, ya" no es una opción que te ofrecieron y suena brusco.'] },
+        { bot: 'Done. The refund will be processed within five days.', es: 'Listo. El reembolso se procesará en cinco días.', o: ['Thank you for sorting it out so quickly.', 'Five days is many.', 'OK, bye bye bye.'], a: 0, why: ['', '"Many" se usa con cosas contables en plural; sería "Five days is a long time". Además suena a queja.', 'Repetir "bye" tres veces suena infantil; lo natural es agradecer.'] }
       ]
     }
   ];

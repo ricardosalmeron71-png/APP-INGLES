@@ -1,8 +1,8 @@
 /* Service worker: permite usar la app sin conexión */
-const CACHE = 'englishup-v13';
+const CACHE = 'englishup-v15';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
-  './js/config.js', './js/data.js', './js/cloud.js', './js/analysis.js', './js/speech.js', './js/store.js', './js/lessons.js', './js/verbs.js', './js/pronunciation.js', './js/engage.js', './js/notify.js', './js/exercises.js', './js/app.js',
+  './js/config.js', './js/data.js', './js/cloud.js', './js/analysis.js', './js/speech.js', './js/store.js', './js/lessons.js', './js/verbs.js', './js/pronunciation.js', './js/dictdata.js', './js/dict.js', './js/explain.js', './js/translate.js', './js/engage.js', './js/notify.js', './js/exercises.js', './js/app.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS))); self.skipWaiting(); });

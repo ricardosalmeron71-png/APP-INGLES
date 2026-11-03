@@ -1487,8 +1487,15 @@
       const answer = (i, spoken) => {
         const correct = i === tr.a;
         addMsg('me', spoken || tr.o[i]);
-        if (correct) { ok++; Sp.beep('ok'); } else { Sp.beep('bad'); addMsg('hint', `💡 Mejor respuesta: "${tr.o[tr.a]}"`); }
-        t++; setTimeout(turn, 900);
+        if (correct) { ok++; Sp.beep('ok'); t++; setTimeout(turn, 900); return; }
+        Sp.beep('bad');
+        // Explica por qué no era la mejor respuesta y espera a que la persona lo lea
+        inp.innerHTML = '';
+        log.insertAdjacentHTML('beforeend', `<div class="msg hint pop"><div class="msg-bubble why-bubble">${window.Explain.dialogue(tr, i)}<button class="btn small" id="cont-chat">Continuar</button></div></div>`);
+        Ex.bindSpeakers(log.lastElementChild);
+        log.scrollTop = log.scrollHeight;
+        Sp.speak(tr.o[tr.a]);
+        $('#cont-chat', log).addEventListener('click', (e) => { e.target.remove(); t++; turn(); });
       };
       $$('.option', inp).forEach((b) => b.addEventListener('click', () => answer(+b.dataset.i)));
       const say = $('#say', inp);
@@ -2273,6 +2280,7 @@
   render();
   syncOnStart();
   Nt.refresh();
+  window.Translate.init((m) => toast(m, 4500));
   Nt.setLocalHandler((body) => toast(`<span class="big-emoji">🦉</span><div><b>Hora de practicar</b><div>${esc(body)}</div></div>`, 7000));
   setInterval(() => Nt.localTick(), 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Nt.localTick(); });

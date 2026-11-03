@@ -68,7 +68,7 @@ window.Exercises = (function () {
     bindSpeakers(el);
     if (ex.audio) S.speak(ex.audio);
     const get = bindOptions(el, ctx, ex.speakOptions ? (i) => S.speak(ex.options[i]) : null);
-    return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer], explain: ex.explain, speakAnswer: /[a-z]/i.test(ex.options[ex.answer]) && !ex.audio ? ex.options[ex.answer] : ex.audio });
+    return () => { const sel = get(); return { correct: sel === ex.answer, given: sel == null ? '' : ex.options[sel], answer: ex.options[ex.answer], explain: ex.explain, speakAnswer: /[a-z]/i.test(ex.options[ex.answer]) && !ex.audio ? ex.options[ex.answer] : ex.audio }; };
   };
 
   R.listen_choice = (ex, el, ctx) => {
@@ -77,7 +77,7 @@ window.Exercises = (function () {
     setTimeout(() => S.speak(ex.audio), 300);
     if (!S.canSpeak()) el.querySelector('.speakers').insertAdjacentHTML('afterend', `<div class="note">Tu navegador no reproduce audio. Texto: <b>${esc(ex.audio)}</b></div>`);
     const get = bindOptions(el, ctx);
-    return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer], explain: `Audio: "${ex.audio}"`, speakAnswer: ex.audio });
+    return () => { const sel = get(); return { correct: sel === ex.answer, given: sel == null ? '' : ex.options[sel], answer: ex.options[ex.answer], explain: `Audio: "${ex.audio}"`, speakAnswer: ex.audio }; };
   };
 
   R.picture = (ex, el, ctx) => {
@@ -86,7 +86,7 @@ window.Exercises = (function () {
       <div class="picture-grid">${ex.options.map((o, i) => `
         <button class="option picture" data-i="${i}"><div class="pic">${o.emoji}</div><div>${esc(o.text)}</div></button>`).join('')}</div>`;
     const get = bindOptions(el, ctx, (i) => S.speak(ex.options[i].text));
-    return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer].text, speakAnswer: ex.options[ex.answer].text });
+    return () => { const sel = get(); return { correct: sel === ex.answer, given: sel == null ? '' : ex.options[sel].text, answer: ex.options[ex.answer].text, speakAnswer: ex.options[ex.answer].text }; };
   };
 
   R.fill = (ex, el, ctx) => {
@@ -98,7 +98,7 @@ window.Exercises = (function () {
     const blank = el.querySelector('.blank');
     const get = bindOptions(el, ctx, (i) => { blank.textContent = ex.options[i]; blank.classList.add('filled'); S.speak(ex.sentence.replace('___', ex.options[i])); });
     const full = ex.sentence.replace('___', ex.options[ex.answer]);
-    return () => ({ correct: get() === ex.answer, answer: full, explain: ex.explain, speakAnswer: full });
+    return () => { const sel = get(); return { correct: sel === ex.answer, given: sel == null ? '' : ex.options[sel], answer: full, explain: ex.explain, speakAnswer: full }; };
   };
 
   R.read = (ex, el, ctx) => {
@@ -111,7 +111,7 @@ window.Exercises = (function () {
       ${optionsHtml(ex.options)}`;
     bindSpeakers(el);
     const get = bindOptions(el, ctx, (i) => S.speak(ex.options[i]));
-    return () => ({ correct: get() === ex.answer, answer: ex.options[ex.answer], speakAnswer: ex.options[ex.answer] });
+    return () => { const sel = get(); return { correct: sel === ex.answer, given: sel == null ? '' : ex.options[sel], answer: ex.options[ex.answer], speakAnswer: ex.options[ex.answer] }; };
   };
 
   function bankUI(ex, el, ctx) {
@@ -173,7 +173,7 @@ window.Exercises = (function () {
       const al = A.alignWords(ex.audio, ta.value);
       const html = r.ok ? '' : `<div class="align">${al.words.map((w) => `<span class="${w.ok ? 'w-ok' : 'w-bad'}">${esc(w.word)}</span>`).join(' ')}</div>`;
       const ok = r.ok && !(ex.strict && r.typo);
-      return { correct: ok, typo: ok && r.typo, answer: ex.shown || ex.audio, explain: ex.translation, html: ok ? '' : html, speakAnswer: ex.audio };
+      return { correct: ok, typo: ok && r.typo, given: ta.value, answer: ex.shown || ex.audio, explain: ex.translation, html: ok ? '' : html, speakAnswer: ex.audio };
     };
   };
 
@@ -422,7 +422,7 @@ window.Exercises = (function () {
     const start = Date.now();
 
     root.innerHTML = `
-      <div class="lesson">
+      <div class="lesson" data-mode="${mode}">
         <div class="lesson-top">
           <button class="icon-btn close" aria-label="Salir">✕</button>
           <div class="progress"><div class="bar"></div></div>
@@ -470,6 +470,7 @@ window.Exercises = (function () {
 
     function next() {
       sheet.className = 'sheet'; sheet.innerHTML = '';
+      document.body.classList.remove('sheet-open');
       checking = false;
       if (idx >= queue.length) return complete();
       bar.style.width = `${Math.round(100 * idx / queue.length)}%`;
@@ -505,18 +506,27 @@ window.Exercises = (function () {
       if (r.speakAnswer == null && ex.sayAfter) r.speakAnswer = ex.sayAfter;
       if (autoSay && (!opts.settings || opts.settings.autoSay !== false)) setTimeout(() => { if (queue[idx] === ex) S.speak(autoSay); }, 450);
       if (ex.sayAfter) r.speakAnswer = ex.sayAfter;
+      // Explicación del error (qué respondiste, cuál era la correcta y por qué)
+      let whyHtml = '';
+      try { whyHtml = window.Explain && ex.type !== 'free_write' ? window.Explain.html(ex, r) : ''; } catch (e) { whyHtml = ''; }
+      // Si acertó, mostrar el significado de la frase en inglés (ayuda a entender)
+      let meaning = '';
+      try { if (r.correct && window.Dict && ['translate', 'listen_type', 'fill', 'speak', 'coach'].includes(ex.type)) { const t = window.Dict.sentence(r.answer || ex.text || ''); if (t && t !== ex.source) meaning = t; } } catch (e) { meaning = ''; }
       const praise = ['¡Excelente!', '¡Correcto!', '¡Muy bien!', '¡Genial!', '¡Perfecto!', '¡Así se hace!'];
       sheet.className = `sheet show ${r.correct ? 'ok' : 'bad'}`;
+      document.body.classList.add('sheet-open');
       sheet.innerHTML = `
         <div class="sheet-inner">
           <div class="sheet-head">
             <span class="sheet-icon">${r.correct ? '✅' : '❌'}</span>
-            <b>${r.correct ? (r.typo ? '¡Correcto! Pero revisa la ortografía:' : praise[Math.floor(Math.random() * praise.length)]) : 'Respuesta correcta:'}</b>
+            <b>${r.correct ? (r.typo ? '¡Correcto! Pero revisa la ortografía:' : praise[Math.floor(Math.random() * praise.length)]) : (whyHtml ? 'No es correcto' : 'Respuesta correcta:')}</b>
             ${r.speakAnswer ? `<button class="btn-speaker small" data-say="${esc(r.speakAnswer)}">🔊</button>` : ''}
           </div>
+          ${whyHtml || `
           ${(!r.correct || r.typo) && r.answer ? `<div class="sheet-answer">${esc(r.answer)}</div>` : ''}
           ${r.explain ? `<div class="sheet-explain">${esc(r.explain)}</div>` : ''}
-          ${r.html || ''}
+          ${r.html || ''}`}
+          ${r.correct && !r.typo && meaning ? `<div class="sheet-explain">🇪🇸 ${esc(meaning)}</div>` : ''}
           <button class="btn continue ${r.correct ? '' : 'danger'}">Continuar</button>
         </div>`;
       bindSpeakers(sheet);
@@ -531,7 +541,7 @@ window.Exercises = (function () {
     function safeEval() {
       const q = queue[idx];
       if (q.type === 'coach') { opts.hooks && opts.hooks.onCoach && opts.hooks.onCoach(q, { ok: false, score: 0, analysis: { tagged: [] }, tries: 0, skipped: true }); return { answer: q.text, speakAnswer: q.text, explain: 'Escucha el modelo y repítelo despacio. Volverá a aparecer para practicarlo.' }; }
-      if (['speak', 'free_write', 'match'].includes(q.type)) return {}; try { const r = evaluate(); return { answer: r.answer, explain: r.explain, speakAnswer: r.speakAnswer }; } catch (e) { return {}; } }
+      if (['speak', 'free_write', 'match'].includes(q.type)) return { skipped: true, answer: q.text }; try { const r = evaluate(); return { answer: r.answer, explain: r.explain, speakAnswer: r.speakAnswer, given: '', skipped: true }; } catch (e) { return {}; } }
 
     function complete() {
       bar.style.width = '100%';

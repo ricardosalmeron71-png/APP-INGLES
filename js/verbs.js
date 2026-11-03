@@ -189,10 +189,10 @@ window.Verbs = (function () {
   function choiceEx(v, f) {
     const correct = first(formsOf(v, f));
     const opts = shuffle([correct, ...wrongCandidates(v, f).slice(0, 3)]);
-    return withAudio({ type: 'choice', skill: 'grammar', verb: v.base, question: `${FORM_LABELS[f]} de "${v.base}" (${v.es})`, options: opts, answer: opts.indexOf(correct), explain: allForms(v), audio: null }, v);
+    return withAudio({ type: 'choice', skill: 'grammar', verb: v.base, form: f, question: `${FORM_LABELS[f]} de "${v.base}" (${v.es})`, options: opts, answer: opts.indexOf(correct), explain: allForms(v), audio: null }, v);
   }
   function writeEx(v, f) {
-    return withAudio({ type: 'translate', skill: 'writing', verb: v.base, strict: true, question: `Escribe el ${FORM_SHORT[f]}`, source: `${v.base} (${v.es}) → ${FORM_LABELS[f].toLowerCase()}`, answers: formsOf(v, f), explain: allForms(v) }, v);
+    return withAudio({ type: 'translate', skill: 'writing', verb: v.base, strict: true, form: f, question: `Escribe el ${FORM_SHORT[f]}`, source: `${v.base} (${v.es}) → ${FORM_LABELS[f].toLowerCase()}`, answers: formsOf(v, f), explain: allForms(v) }, v);
   }
   function threeFormsEx(v) {
     const combos = [];

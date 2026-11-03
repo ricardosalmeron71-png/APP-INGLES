@@ -32,11 +32,11 @@ window.Lessons = (function () {
     unit.vocab.forEach((v) => out.push({ type: 'intro', skill: 'vocab', word: v[0], meaning: v[1], emoji: v[2] }));
     pick(unit.vocab, 3).forEach((v) => {
       const c = choiceFrom(v, pool, 4, (x) => x[0]);
-      out.push({ type: 'picture', skill: 'vocab', question: `¿Cuál es "${v[1]}"?`, options: c.options.map((o) => ({ text: o[0], emoji: o[2] })), answer: c.answer, audioOptions: true });
+      out.push({ type: 'picture', kind: 'picture', src: v[0], es: v[1], skill: 'vocab', question: `¿Cuál es "${v[1]}"?`, options: c.options.map((o) => ({ text: o[0], emoji: o[2] })), answer: c.answer, audioOptions: true });
     });
     pick(unit.vocab, 3).forEach((v) => {
       const c = choiceFrom(v, pool, 4, (x) => x[0]);
-      out.push({ type: 'choice', skill: 'vocab', question: `¿Qué significa "${v[0]}"?`, audio: v[0], options: c.options.map((o) => o[1]), answer: c.answer });
+      out.push({ type: 'choice', kind: 'meaning', src: v[0], es: v[1], skill: 'vocab', question: `¿Qué significa "${v[0]}"?`, audio: v[0], options: c.options.map((o) => o[1]), answer: c.answer });
     });
     out.push({ type: 'match', skill: 'vocab', question: 'Une las parejas', pairs: pick(unit.vocab, 5).map((v) => [v[0], v[1]]) });
     pick(unit.vocab, 2).forEach((v) => out.push({ type: 'translate', skill: 'vocab', question: 'Escribe en inglés', source: `${v[2]} ${v[1]}`, answers: [v[0]] }));
@@ -61,11 +61,11 @@ window.Lessons = (function () {
     const pool = sameLevelSentences(unit);
     pick(unit.vocab, 2).forEach((v) => {
       const c = choiceFrom(v, sameLevelVocab(unit), 4, (x) => x[0]);
-      out.push({ type: 'listen_choice', skill: 'listening', question: '¿Qué palabra escuchas?', audio: v[0], options: c.options.map((o) => `${o[2]} ${o[0]}`), answer: c.answer });
+      out.push({ type: 'listen_choice', kind: 'listen-word', src: v[0], skill: 'listening', question: '¿Qué palabra escuchas?', audio: v[0], options: c.options.map((o) => `${o[2]} ${o[0]}`), answer: c.answer });
     });
     pick(unit.sentences, 3).forEach((s) => {
       const c = choiceFrom(s, pool, 3, (x) => x[0]);
-      out.push({ type: 'listen_choice', skill: 'listening', question: '¿Qué significa lo que escuchas?', audio: s[0], options: c.options.map((o) => o[1]), answer: c.answer });
+      out.push({ type: 'listen_choice', kind: 'listen-meaning', src: s[0], es: s[1], skill: 'listening', question: '¿Qué significa lo que escuchas?', audio: s[0], options: c.options.map((o) => o[1]), answer: c.answer });
     });
     pick(unit.sentences, 3).forEach((s) => out.push({ type: 'listen_type', skill: 'listening', question: 'Escribe lo que escuchas', audio: s[0], answers: [s[0], ...s.slice(2)], translation: s[1] }));
     pick(unit.sentences, 2).forEach((s) => out.push({ type: 'translate', skill: 'listening', question: 'Escucha y ordena', audio: s[0], source: '🎧', answers: [s[0]], bank: wordBank(s[0], unit) }));
