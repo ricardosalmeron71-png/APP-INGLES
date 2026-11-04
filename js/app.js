@@ -365,10 +365,11 @@
     function finish() {
       const pct = (s) => (s[1] ? Math.round(100 * s[0] / s[1]) : null);
       const base = 25 + 15 * (passed + 1);
+      const or = (v) => (v == null ? base : v); // sin "??" para iOS/Safari antiguos
       const skills = {
-        vocab: pct(stats.vocab) ?? base, grammar: pct(stats.grammar) ?? base,
-        listening: pct(stats.listening) ?? base, reading: pct(stats.reading) ?? base,
-        speaking: speakScore ?? base, writing: writeScore ?? base
+        vocab: or(pct(stats.vocab)), grammar: or(pct(stats.grammar)),
+        listening: or(pct(stats.listening)), reading: or(pct(stats.reading)),
+        speaking: or(speakScore), writing: or(writeScore)
       };
       // las habilidades escaladas según el nivel alcanzado
       Object.keys(skills).forEach((k) => { skills[k] = Math.round(Math.min(100, skills[k] * 0.6 + base * 0.4)); });
